@@ -721,7 +721,7 @@ ir_error_t tpd_get_point_temp_info(IrPoint_t point_pos, uint16_t* point_temp_val
     ptVdCmdHeader.byCmdType = CMDTYPE_LONG_TYPE_TPD;
     ptVdCmdHeader.bySubCmd = SUBCMD_TPD_GET_POINT_TEMP;
     dwAddr1 = (((uint32_t)point_pos.x) << 16) | point_pos.y;
-    rst = long_cmd_read(&ptVdCmdHeader, wParam, dwAddr1, dwAddr2, 12, data);
+    rst = long_cmd_read(&ptVdCmdHeader, wParam, dwAddr1, dwAddr2, sizeof(data), data);
     *point_temp_value = ((uint16_t)data[0] << 8) + data[1];
     return rst;
 }

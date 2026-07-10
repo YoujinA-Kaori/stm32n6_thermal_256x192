@@ -108,9 +108,9 @@ static void thermal_gui_set_button_selected(lv_obj_t *button, bool selected, lv_
     }
 
     lv_obj_set_style_border_width(button, selected ? 2 : 1, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_color(button, selected ? accent : lv_color_hex(0x43505c), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(button, selected ? lv_color_hex(0x34404a) : lv_color_hex(0x22292f), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(button, selected ? accent : lv_color_hex(0xecf1f4), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(button, selected ? accent : lv_color_hex(0x26313b), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(button, selected ? lv_color_hex(0x24201b) : lv_color_hex(0x11171d), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(button, selected ? accent : lv_color_hex(0xf1f5f7), LV_PART_MAIN | LV_STATE_DEFAULT);
 }
 
 /**

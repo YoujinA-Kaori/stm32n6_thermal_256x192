@@ -219,10 +219,9 @@ function drawMarker(x, y, label, color) {
 
 function getActiveRangeCelsius(frame) {
   if (state.autoRange) {
-    return {
-      lowC: Math.floor(frame.min_temp_c),
-      highC: Math.ceil(frame.max_temp_c),
-    };
+    const lowC = Math.floor(frame.min_temp_c);
+    const highC = Math.max(lowC + 1, Math.ceil(frame.max_temp_c));
+    return { lowC, highC };
   }
 
   let lowC = Number(lowRangeSlider.value);
@@ -283,15 +282,16 @@ function drawFrame(frame) {
   minValueEl.textContent = `${formatTemp(frame.min_temp_c)} @ (${frame.min_x}, ${frame.min_y})`;
 
   if (state.autoRange) {
-    lowRangeSlider.value = String(Math.floor(frame.min_temp_c));
-    highRangeSlider.value = String(Math.ceil(frame.max_temp_c));
-    if (Number(highRangeSlider.value) <= Number(lowRangeSlider.value)) {
-      highRangeSlider.value = String(Number(lowRangeSlider.value) + 1);
-    }
+    const autoLowC = Math.floor(frame.min_temp_c);
+    const autoHighC = Math.max(autoLowC + 1, Math.ceil(frame.max_temp_c));
+    lowRangeSlider.value = String(clamp(autoLowC, -20, 600));
+    highRangeSlider.value = String(clamp(autoHighC, -20, 600));
+    lowRangeValue.textContent = `${autoLowC} °C`;
+    highRangeValue.textContent = `${autoHighC} °C`;
+  } else {
+    lowRangeValue.textContent = `${lowRangeSlider.value} °C`;
+    highRangeValue.textContent = `${highRangeSlider.value} °C`;
   }
-
-  lowRangeValue.textContent = `${lowRangeSlider.value} °C`;
-  highRangeValue.textContent = `${highRangeSlider.value} °C`;
 }
 
 function syncRangeControlsFromState() {
@@ -621,8 +621,8 @@ window.addEventListener("resize", () => {
 function init() {
   paletteSelect.value = state.palette;
   autoRangeCheck.checked = state.autoRange;
-  lowRangeSlider.value = String(clamp(Math.round(state.lowC), -20, 120));
-  highRangeSlider.value = String(clamp(Math.round(state.highC), -20, 120));
+  lowRangeSlider.value = String(clamp(Math.round(state.lowC), -20, 600));
+  highRangeSlider.value = String(clamp(Math.round(state.highC), -20, 600));
   if (Number(highRangeSlider.value) <= Number(lowRangeSlider.value)) {
     highRangeSlider.value = String(Number(lowRangeSlider.value) + 1);
   }

@@ -39,15 +39,29 @@
 #define THERMAL_GUI_PREVIEW_IMG_Y            (0)
 #define THERMAL_GUI_PREVIEW_IMG_ZOOM         (256U)
 #define THERMAL_GUI_PREVIEW_CROSS_LEN        (28)
-#define THERMAL_GUI_FULLSCREEN_PREVIEW_WIDTH (640)
-#define THERMAL_GUI_FULLSCREEN_PREVIEW_HEIGHT (480)
-#define THERMAL_GUI_FULLSCREEN_PREVIEW_X     (80)
-#define THERMAL_GUI_FULLSCREEN_PREVIEW_Y     (0)
+#define THERMAL_GUI_FULLSCREEN_PREVIEW_WIDTH (512)
+#define THERMAL_GUI_FULLSCREEN_PREVIEW_HEIGHT (384)
+#define THERMAL_GUI_FULLSCREEN_PREVIEW_X     (144)
+#define THERMAL_GUI_FULLSCREEN_PREVIEW_Y     (48)
 #define THERMAL_GUI_FULLSCREEN_PREVIEW_CROSS_LEN (40)
 #define THERMAL_GUI_FULLSCREEN_BUTTON_X      (724)
 #define THERMAL_GUI_FULLSCREEN_BUTTON_Y      (10)
 #define THERMAL_GUI_FULLSCREEN_BUTTON_WIDTH  (66)
 #define THERMAL_GUI_FULLSCREEN_BUTTON_HEIGHT (40)
+
+/* Restrained field-instrument palette: black surfaces, one warm action accent,
+ * and semantic colors only for temperature and link states. */
+#define THERMAL_GUI_COLOR_BG                 (0x050709)
+#define THERMAL_GUI_COLOR_SURFACE            (0x0b0f13)
+#define THERMAL_GUI_COLOR_SURFACE_RAISED     (0x11171d)
+#define THERMAL_GUI_COLOR_BORDER             (0x26313b)
+#define THERMAL_GUI_COLOR_BORDER_ACTIVE      (0x475866)
+#define THERMAL_GUI_COLOR_TEXT               (0xf1f5f7)
+#define THERMAL_GUI_COLOR_TEXT_MUTED         (0x9aa7b2)
+#define THERMAL_GUI_COLOR_ACCENT             (0xffa23a)
+#define THERMAL_GUI_COLOR_HOT                (0xff7248)
+#define THERMAL_GUI_COLOR_COLD               (0x45bfff)
+#define THERMAL_GUI_COLOR_OK                 (0x35cf91)
 
 lv_obj_t *g_contrast_value_label = NULL;
 
@@ -85,21 +99,32 @@ static lv_obj_t *thermal_gui_create_status_badge(lv_obj_t *parent, const char *t
                                                  lv_coord_t pos_x, lv_coord_t width)
 {
     lv_obj_t *badge = lv_obj_create(parent);
-    lv_obj_set_pos(badge, pos_x, 10);
-    lv_obj_set_size(badge, width, 32);
+    lv_obj_t *accent_line = NULL;
+
+    lv_obj_set_pos(badge, pos_x, 8);
+    lv_obj_set_size(badge, width, 34);
     lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
-    thermal_gui_style_panel(badge, lv_color_hex(0x2b323a), lv_color_hex(0x404b56), 8);
-    lv_obj_set_style_border_color(badge, accent, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_opa(badge, LV_OPA_80, LV_PART_MAIN | LV_STATE_DEFAULT);
+    thermal_gui_style_panel(badge, lv_color_hex(THERMAL_GUI_COLOR_SURFACE_RAISED),
+                            lv_color_hex(THERMAL_GUI_COLOR_BORDER), 6);
+    lv_obj_set_style_border_opa(badge, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *label = lv_label_create(badge);
     lv_label_set_text(label, text);
-    lv_obj_set_width(label, width - 12);
+    lv_obj_set_width(label, width - 14);
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_center(label);
-    lv_obj_set_style_text_color(label, lv_color_hex(0xf0f4f7), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(label, LV_ALIGN_CENTER, 3, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    accent_line = lv_obj_create(badge);
+    lv_obj_set_pos(accent_line, 0, 6);
+    lv_obj_set_size(accent_line, 3, 22);
+    lv_obj_clear_flag(accent_line, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(accent_line, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(accent_line, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(accent_line, accent, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(accent_line, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     return badge;
 }
@@ -119,19 +144,20 @@ static lv_obj_t *thermal_gui_create_action_button(lv_obj_t *parent, const char *
 {
     lv_obj_t *button = lv_btn_create(parent);
     lv_obj_set_pos(button, pos_x, 0);
-    lv_obj_set_size(button, width, 34);
+    lv_obj_set_size(button, width, 38);
     lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_radius(button, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(button, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(button, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_color(button, is_active ? accent : lv_color_hex(0x4c5761), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(button, is_active ? accent : lv_color_hex(THERMAL_GUI_COLOR_BORDER), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(button, is_active ? lv_color_hex(0x32404d) : lv_color_hex(0x242b33), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(button, is_active ? lv_color_hex(0x24201b) : lv_color_hex(THERMAL_GUI_COLOR_SURFACE_RAISED), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x202a32), LV_PART_MAIN | LV_STATE_PRESSED);
     lv_obj_set_style_shadow_width(button, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *label = lv_label_create(button);
     lv_label_set_text(label, text);
     lv_obj_center(label);
-    lv_obj_set_style_text_color(label, is_active ? accent : lv_color_hex(0xe3e8ec), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, is_active ? accent : lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     return button;
@@ -152,14 +178,14 @@ static lv_obj_t *thermal_gui_create_slider_row(lv_obj_t *parent, const char *tit
     lv_obj_t *title_label = lv_label_create(parent);
     lv_label_set_text(title_label, title);
     lv_obj_set_pos(title_label, 8, pos_y);
-    lv_obj_set_style_text_color(title_label, lv_color_hex(0xe6ebef), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(title_label, lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(title_label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *value_label = lv_label_create(parent);
     lv_label_set_text(value_label, value_text);
     lv_obj_align_to(value_label, title_label, LV_ALIGN_OUT_RIGHT_MID, 168, 0);
     lv_obj_set_width(value_label, 48);
-    lv_obj_set_style_text_color(value_label, lv_color_hex(0xffc15a), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(value_label, lv_color_hex(THERMAL_GUI_COLOR_ACCENT), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(value_label, THERMAL_GUI_TEXT_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(value_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
@@ -174,12 +200,12 @@ static lv_obj_t *thermal_gui_create_slider_row(lv_obj_t *parent, const char *tit
     lv_slider_set_range(slider, 0, 100);
     lv_slider_set_value(slider, default_value, LV_ANIM_OFF);
     lv_obj_set_style_bg_opa(slider, LV_OPA_40, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0x4a5460), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(THERMAL_GUI_COLOR_BORDER), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(slider, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0xe58a1f), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(THERMAL_GUI_COLOR_ACCENT), LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(slider, 8, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0xffc15a), LV_PART_KNOB | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0xffc16f), LV_PART_KNOB | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_KNOB | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(slider, 10, LV_PART_KNOB | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(slider, 4, LV_PART_KNOB | LV_STATE_DEFAULT);
@@ -200,7 +226,7 @@ static lv_obj_t *thermal_gui_create_switch_row(lv_obj_t *parent, const char *tex
     lv_obj_t *label = lv_label_create(parent);
     lv_label_set_text(label, text);
     lv_obj_set_pos(label, 8, pos_y + 2);
-    lv_obj_set_style_text_color(label, lv_color_hex(0xd8dde2), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *sw = lv_switch_create(parent);
@@ -210,9 +236,9 @@ static lv_obj_t *thermal_gui_create_switch_row(lv_obj_t *parent, const char *tex
     {
         lv_obj_add_state(sw, LV_STATE_CHECKED);
     }
-    lv_obj_set_style_bg_color(sw, lv_color_hex(0x414c56), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(sw, lv_color_hex(THERMAL_GUI_COLOR_BORDER), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(sw, lv_color_hex(0x2f8bd5), LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(sw, lv_color_hex(THERMAL_GUI_COLOR_ACCENT), LV_PART_INDICATOR | LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_INDICATOR | LV_STATE_CHECKED);
     lv_obj_set_style_bg_color(sw, lv_color_hex(0xf6f8fa), LV_PART_KNOB | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(sw, 20, LV_PART_KNOB | LV_STATE_DEFAULT);
@@ -237,11 +263,12 @@ static lv_obj_t *thermal_gui_create_palette_button(lv_obj_t *parent, const char 
     lv_obj_t *button = lv_btn_create(parent);
     lv_obj_set_pos(button, pos_x, pos_y);
     lv_obj_set_size(button, 124, 42);
-    lv_obj_set_style_radius(button, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(button, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(button, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_color(button, is_active ? lv_color_hex(0xffb454) : lv_color_hex(0x43505c), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(button, is_active ? lv_color_hex(THERMAL_GUI_COLOR_ACCENT) : lv_color_hex(THERMAL_GUI_COLOR_BORDER), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_opa(button, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(button, is_active ? lv_color_hex(0x34404a) : lv_color_hex(0x22292f), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(button, is_active ? lv_color_hex(0x24201b) : lv_color_hex(THERMAL_GUI_COLOR_SURFACE_RAISED), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x202a32), LV_PART_MAIN | LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(button, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
@@ -259,7 +286,7 @@ static lv_obj_t *thermal_gui_create_palette_button(lv_obj_t *parent, const char 
     lv_obj_t *label = lv_label_create(button);
     lv_label_set_text(label, text);
     lv_obj_align(label, LV_ALIGN_LEFT_MID, 32, 0);
-    lv_obj_set_style_text_color(label, lv_color_hex(0xecf1f4), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     return button;
@@ -281,17 +308,18 @@ static lv_obj_t *thermal_gui_create_footer_button(lv_obj_t *parent, const char *
     lv_obj_t *button = lv_btn_create(parent);
     lv_obj_set_pos(button, pos_x, 6);
     lv_obj_set_size(button, width, 44);
-    lv_obj_set_style_radius(button, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(button, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(button, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_color(button, emphasize ? accent : lv_color_hex(0x45515d), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(button, emphasize ? lv_color_hex(0x2f3942) : lv_color_hex(0x242b32), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(button, emphasize ? accent : lv_color_hex(THERMAL_GUI_COLOR_BORDER), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(button, emphasize ? lv_color_hex(0x1c1b19) : lv_color_hex(THERMAL_GUI_COLOR_SURFACE_RAISED), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x202a32), LV_PART_MAIN | LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(button, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *label = lv_label_create(button);
     lv_label_set_text(label, text);
     lv_obj_center(label);
-    lv_obj_set_style_text_color(label, emphasize ? accent : lv_color_hex(0xe3e8ec), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, emphasize ? accent : lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     return button;
@@ -314,10 +342,10 @@ static lv_obj_t *thermal_gui_create_marker_label(lv_obj_t *parent, const char *t
     lv_obj_set_size(label, 22, 22);
     lv_obj_clear_flag(label, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_radius(label, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(label, lv_color_hex(0x101317), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(label, LV_OPA_80, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(label, lv_color_hex(0x050709), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(label, LV_OPA_90, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(label, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_color(label, lv_color_hex(0x2c3440), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(label, lv_color_hex(THERMAL_GUI_COLOR_BORDER_ACTIVE), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_opa(label, LV_OPA_90, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(label, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(label, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -337,15 +365,16 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     lv_obj_t *label = NULL;
     lv_obj_t *page = NULL;
     lv_obj_t *note_box = NULL;
+    lv_obj_t *title_accent = NULL;
     lv_obj_t *brand_panel = NULL;
     lv_obj_t *brand_img = NULL;
     ui->WidgetsDemo = lv_obj_create(NULL);
     lv_obj_set_size(ui->WidgetsDemo, THERMAL_GUI_SCREEN_WIDTH, THERMAL_GUI_SCREEN_HEIGHT);
     lv_obj_clear_flag(ui->WidgetsDemo, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(ui->WidgetsDemo, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_bg_color(ui->WidgetsDemo, lv_color_hex(0x1d2228), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->WidgetsDemo, lv_color_hex(THERMAL_GUI_COLOR_BG), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui->WidgetsDemo, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(ui->WidgetsDemo, lv_color_hex(0xe8edf0), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->WidgetsDemo, lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui->WidgetsDemo_status_bar = lv_obj_create(ui->WidgetsDemo);
     lv_obj_set_pos(ui->WidgetsDemo_status_bar, 0, 0);
@@ -353,46 +382,56 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     lv_obj_clear_flag(ui->WidgetsDemo_status_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_radius(ui->WidgetsDemo_status_bar, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(ui->WidgetsDemo_status_bar, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(ui->WidgetsDemo_status_bar, lv_color_hex(0x252c33), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->WidgetsDemo_status_bar, lv_color_hex(THERMAL_GUI_COLOR_SURFACE), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui->WidgetsDemo_status_bar, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(ui->WidgetsDemo_status_bar, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui->WidgetsDemo_label_title = lv_label_create(ui->WidgetsDemo_status_bar);
-    lv_label_set_text(ui->WidgetsDemo_label_title, "热成像设置");
-    lv_obj_set_pos(ui->WidgetsDemo_label_title, 18, 12);
-    lv_obj_set_style_text_font(ui->WidgetsDemo_label_title, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(ui->WidgetsDemo_label_title, lv_color_hex(0xf2f5f7), LV_PART_MAIN | LV_STATE_DEFAULT);
+    title_accent = lv_obj_create(ui->WidgetsDemo_status_bar);
+    lv_obj_set_pos(title_accent, 8, 10);
+    lv_obj_set_size(title_accent, 3, 32);
+    lv_obj_clear_flag(title_accent, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(title_accent, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(title_accent, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(title_accent, lv_color_hex(THERMAL_GUI_COLOR_ACCENT), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(title_accent, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui->WidgetsDemo_status_pseudo = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "伪彩 锐化", lv_color_hex(0xff8c3a), 190, 92);
-    ui->WidgetsDemo_status_gain = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "增益 高", lv_color_hex(0xffbf47), 288, 82);
-    ui->WidgetsDemo_status_ffc = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "FFC 自动", lv_color_hex(0x48b3ff), 376, 94);
-    ui->WidgetsDemo_status_uart = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "串口 在线", lv_color_hex(0x37c48e), 474, 160);
-    ui->WidgetsDemo_status_time = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "16:45", lv_color_hex(0x7bc6ff), 638, 64);
-    ui->WidgetsDemo_status_power = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "BAT --%", lv_color_hex(0xffc15a), 708, 92);
+    ui->WidgetsDemo_label_title = lv_label_create(ui->WidgetsDemo_status_bar);
+    lv_label_set_text(ui->WidgetsDemo_label_title, "热成像");
+    lv_obj_set_pos(ui->WidgetsDemo_label_title, 20, 14);
+    lv_obj_set_style_text_font(ui->WidgetsDemo_label_title, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->WidgetsDemo_label_title, lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui->WidgetsDemo_status_pseudo = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "伪彩 锐化", lv_color_hex(THERMAL_GUI_COLOR_ACCENT), 134, 106);
+    ui->WidgetsDemo_status_gain = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "增益 高", lv_color_hex(THERMAL_GUI_COLOR_HOT), 246, 88);
+    ui->WidgetsDemo_status_ffc = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "FFC 自动", lv_color_hex(THERMAL_GUI_COLOR_COLD), 340, 102);
+    ui->WidgetsDemo_status_uart = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "串口 在线", lv_color_hex(THERMAL_GUI_COLOR_OK), 448, 132);
+    ui->WidgetsDemo_status_time = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "16:45", lv_color_hex(THERMAL_GUI_COLOR_COLD), 586, 76);
+    ui->WidgetsDemo_status_power = thermal_gui_create_status_badge(ui->WidgetsDemo_status_bar, "BAT --%", lv_color_hex(THERMAL_GUI_COLOR_ACCENT), 668, 120);
 
     ui->WidgetsDemo_left_panel = lv_obj_create(ui->WidgetsDemo);
     lv_obj_set_pos(ui->WidgetsDemo_left_panel, THERMAL_GUI_MARGIN, THERMAL_GUI_CONTENT_TOP);
     lv_obj_set_size(ui->WidgetsDemo_left_panel, THERMAL_GUI_LEFT_WIDTH, THERMAL_GUI_CONTENT_HEIGHT);
     lv_obj_clear_flag(ui->WidgetsDemo_left_panel, LV_OBJ_FLAG_SCROLLABLE);
-    thermal_gui_style_panel(ui->WidgetsDemo_left_panel, lv_color_hex(0x242b32), lv_color_hex(0x3a444f), 12);
+    thermal_gui_style_panel(ui->WidgetsDemo_left_panel, lv_color_hex(THERMAL_GUI_COLOR_SURFACE),
+                            lv_color_hex(THERMAL_GUI_COLOR_BORDER), 8);
     ui->WidgetsDemo_tabview_ctrl = lv_tabview_create(ui->WidgetsDemo_left_panel, LV_DIR_TOP, 40);
     lv_obj_set_pos(ui->WidgetsDemo_tabview_ctrl, 0, 0);
     lv_obj_set_size(ui->WidgetsDemo_tabview_ctrl, THERMAL_GUI_LEFT_WIDTH, THERMAL_GUI_CONTENT_HEIGHT);
     lv_obj_clear_flag(ui->WidgetsDemo_tabview_ctrl, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_opa(ui->WidgetsDemo_tabview_ctrl, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(ui->WidgetsDemo_tabview_ctrl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(ui->WidgetsDemo_tabview_ctrl, 12, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->WidgetsDemo_tabview_ctrl, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(ui->WidgetsDemo_tabview_ctrl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), lv_color_hex(0x20262c), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), lv_color_hex(THERMAL_GUI_COLOR_SURFACE_RAISED), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), 10, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), lv_color_hex(0x9ca9b4), LV_PART_ITEMS | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), 6, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), lv_color_hex(THERMAL_GUI_COLOR_TEXT_MUTED), LV_PART_ITEMS | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), LV_OPA_TRANSP, LV_PART_ITEMS | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), lv_color_hex(0x2e3740), LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), lv_color_hex(0x211d18), LV_PART_ITEMS | LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), LV_OPA_COVER, LV_PART_ITEMS | LV_STATE_CHECKED);
-    lv_obj_set_style_border_color(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), lv_color_hex(0xffa84d), LV_PART_ITEMS | LV_STATE_CHECKED);
-    lv_obj_set_style_border_width(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), 2, LV_PART_ITEMS | LV_STATE_CHECKED);
-    lv_obj_set_style_text_color(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), lv_color_hex(0xf2f6f8), LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_border_color(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), lv_color_hex(THERMAL_GUI_COLOR_ACCENT), LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_border_width(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), 1, LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_text_color(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), lv_color_hex(THERMAL_GUI_COLOR_ACCENT), LV_PART_ITEMS | LV_STATE_CHECKED);
 
     ui->WidgetsDemo_tab_palette = lv_tabview_add_tab(ui->WidgetsDemo_tabview_ctrl, "伪彩");
     ui->WidgetsDemo_tab_display = lv_tabview_add_tab(ui->WidgetsDemo_tabview_ctrl, "显示");
@@ -402,7 +441,7 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     lv_obj_set_style_text_font(lv_tabview_get_tab_btns(ui->WidgetsDemo_tabview_ctrl), THERMAL_GUI_CN_FONT, LV_PART_ITEMS | LV_STATE_CHECKED);
 
     page = ui->WidgetsDemo_tab_palette;
-    lv_obj_set_style_bg_color(page, lv_color_hex(0x242b32), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(page, lv_color_hex(THERMAL_GUI_COLOR_SURFACE), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(page, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_top(page, 12, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_left(page, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -413,7 +452,7 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     label = lv_label_create(page);
     lv_label_set_text(label, "当前模式");
     lv_obj_set_pos(label, 8, 4);
-    lv_obj_set_style_text_color(label, lv_color_hex(0x9cacb8), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_TEXT_MUTED), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui->WidgetsDemo_btn_palette_current = thermal_gui_create_action_button(page, "当前: 锐化", 118, 132, lv_color_hex(0xffb454), true);
@@ -434,17 +473,18 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
 
     note_box = lv_obj_create(page);
     lv_obj_set_pos(note_box, 8, 286);
-    lv_obj_set_size(note_box, 250, 52);
-    thermal_gui_style_panel(note_box, lv_color_hex(0x20262c), lv_color_hex(0x3d4853), 10);
+    lv_obj_set_size(note_box, 250, 22);
+    thermal_gui_style_panel(note_box, lv_color_hex(THERMAL_GUI_COLOR_SURFACE_RAISED),
+                            lv_color_hex(THERMAL_GUI_COLOR_BORDER), 6);
     label = lv_label_create(note_box);
-    lv_label_set_text(label, "建议将常用伪彩固定在前两行，缩短切换路径");
+    lv_label_set_text(label, "常用伪彩优先");
     lv_obj_set_width(label, 224);
     lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_text_color(label, lv_color_hex(0xcbd4da), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_TEXT_MUTED), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     page = ui->WidgetsDemo_tab_display;
-    lv_obj_set_style_bg_color(page, lv_color_hex(0x242b32), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(page, lv_color_hex(THERMAL_GUI_COLOR_SURFACE), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(page, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(page, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_scrollbar_mode(page, LV_SCROLLBAR_MODE_OFF);
@@ -459,7 +499,7 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     label = lv_label_create(page);
     lv_label_set_text(label, "温度单位");
     lv_obj_set_pos(label, 8, 258);
-    lv_obj_set_style_text_color(label, lv_color_hex(0xe6ebef), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
     ui->WidgetsDemo_btn_unit_c = thermal_gui_create_action_button(page, "℃", 148, 52, lv_color_hex(0xffb454), true);
     ui->WidgetsDemo_btn_unit_f = thermal_gui_create_action_button(page, "℉", 206, 52, lv_color_hex(0x6b7885), false);
@@ -467,7 +507,7 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     lv_obj_set_pos(ui->WidgetsDemo_btn_unit_f, 206, 250);
 
     page = ui->WidgetsDemo_tab_module;
-    lv_obj_set_style_bg_color(page, lv_color_hex(0x242b32), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(page, lv_color_hex(THERMAL_GUI_COLOR_SURFACE), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(page, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(page, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_scrollbar_mode(page, LV_SCROLLBAR_MODE_OFF);
@@ -475,7 +515,7 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     label = lv_label_create(page);
     lv_label_set_text(label, "增益模式");
     lv_obj_set_pos(label, 8, 6);
-    lv_obj_set_style_text_color(label, lv_color_hex(0xe6ebef), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui->WidgetsDemo_btn_gain_high = thermal_gui_create_action_button(page, "高增益", 0, 112, lv_color_hex(0xffb454), true);
@@ -488,7 +528,7 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     label = lv_label_create(page);
     lv_label_set_text(label, "手动触发");
     lv_obj_set_pos(label, 8, 136);
-    lv_obj_set_style_text_color(label, lv_color_hex(0xe6ebef), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_TEXT), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui->WidgetsDemo_btn_ffc_manual = thermal_gui_create_action_button(page, "执行 FFC", 140, 118, lv_color_hex(0x48b3ff), true);
@@ -498,18 +538,19 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     note_box = lv_obj_create(page);
     lv_obj_set_pos(note_box, 8, 182);
     lv_obj_set_size(note_box, 250, 126);
-    thermal_gui_style_panel(note_box, lv_color_hex(0x20262c), lv_color_hex(0x3d4853), 10);
+    thermal_gui_style_panel(note_box, lv_color_hex(THERMAL_GUI_COLOR_SURFACE_RAISED),
+                            lv_color_hex(THERMAL_GUI_COLOR_BORDER), 6);
 
     label = lv_label_create(note_box);
     lv_label_set_text(label, "模块图像状态\n- 当前模式: Image + Temperature\n- FFC 策略: 自动优先，手动补触发\n- 建议保留高增益用于常规测温场景");
     lv_obj_set_pos(label, 10, 10);
     lv_obj_set_width(label, 228);
-    lv_obj_set_style_text_color(label, lv_color_hex(0xcbd4da), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_TEXT_MUTED), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_line_space(label, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     page = ui->WidgetsDemo_tab_system;
-    lv_obj_set_style_bg_color(page, lv_color_hex(0x242b32), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(page, lv_color_hex(THERMAL_GUI_COLOR_SURFACE), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(page, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(page, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_scrollbar_mode(page, LV_SCROLLBAR_MODE_OFF);
@@ -522,13 +563,14 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     ui->WidgetsDemo_btn_device_info = lv_obj_create(page);
     lv_obj_set_pos(ui->WidgetsDemo_btn_device_info, 8, 108);
     lv_obj_set_size(ui->WidgetsDemo_btn_device_info, 250, 104);
-    thermal_gui_style_panel(ui->WidgetsDemo_btn_device_info, lv_color_hex(0x20262c), lv_color_hex(0x3d4853), 10);
+    thermal_gui_style_panel(ui->WidgetsDemo_btn_device_info, lv_color_hex(THERMAL_GUI_COLOR_SURFACE_RAISED),
+                            lv_color_hex(THERMAL_GUI_COLOR_BORDER), 6);
 
     label = lv_label_create(ui->WidgetsDemo_btn_device_info);
     lv_label_set_text(label, "设备信息\nSTM32N647 + Tiny1C\n800x480 LVGL 原型");
     lv_obj_set_pos(label, 10, 10);
     lv_obj_set_width(label, 228);
-    lv_obj_set_style_text_color(label, lv_color_hex(0xcbd4da), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_TEXT_MUTED), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_line_space(label, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
@@ -536,24 +578,24 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     lv_obj_set_pos(ui->WidgetsDemo_preview_panel, 324, THERMAL_GUI_CONTENT_TOP);
     lv_obj_set_size(ui->WidgetsDemo_preview_panel, THERMAL_GUI_RIGHT_WIDTH, THERMAL_GUI_CONTENT_HEIGHT);
     lv_obj_clear_flag(ui->WidgetsDemo_preview_panel, LV_OBJ_FLAG_SCROLLABLE);
-    thermal_gui_style_panel(ui->WidgetsDemo_preview_panel, lv_color_hex(0x242b32), lv_color_hex(0x3a444f), 12);
+    thermal_gui_style_panel(ui->WidgetsDemo_preview_panel, lv_color_hex(THERMAL_GUI_COLOR_SURFACE),
+                            lv_color_hex(THERMAL_GUI_COLOR_BORDER), 8);
 
     ui->WidgetsDemo_preview_label = lv_label_create(ui->WidgetsDemo_preview_panel);
-    lv_label_set_text(ui->WidgetsDemo_preview_label, "实时热成像预览");
-    lv_obj_set_pos(ui->WidgetsDemo_preview_label, 14, 10);
+    lv_label_set_text(ui->WidgetsDemo_preview_label, "LIVE / 实时热成像");
+    lv_obj_set_pos(ui->WidgetsDemo_preview_label, 14, 5);
     lv_obj_set_style_text_font(ui->WidgetsDemo_preview_label, THERMAL_GUI_CN_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(ui->WidgetsDemo_preview_label, lv_color_hex(0xeaf0f4), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->WidgetsDemo_preview_label, lv_color_hex(THERMAL_GUI_COLOR_OK), LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui->WidgetsDemo_preview_frame = lv_obj_create(ui->WidgetsDemo_preview_panel);
-    lv_obj_set_pos(ui->WidgetsDemo_preview_frame, 16, 20);
+    lv_obj_set_pos(ui->WidgetsDemo_preview_frame, 16, 28);
     lv_obj_set_size(ui->WidgetsDemo_preview_frame, THERMAL_GUI_PREVIEW_WIDTH, THERMAL_GUI_PREVIEW_HEIGHT);
     lv_obj_clear_flag(ui->WidgetsDemo_preview_frame, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_radius(ui->WidgetsDemo_preview_frame, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->WidgetsDemo_preview_frame, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(ui->WidgetsDemo_preview_frame, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_color(ui->WidgetsDemo_preview_frame, lv_color_hex(0x53606c), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(ui->WidgetsDemo_preview_frame, lv_color_hex(0x0f161b), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_grad_color(ui->WidgetsDemo_preview_frame, lv_color_hex(0x17212a), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_grad_dir(ui->WidgetsDemo_preview_frame, LV_GRAD_DIR_VER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(ui->WidgetsDemo_preview_frame, lv_color_hex(THERMAL_GUI_COLOR_BORDER_ACTIVE), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->WidgetsDemo_preview_frame, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(ui->WidgetsDemo_preview_frame, LV_GRAD_DIR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui->WidgetsDemo_preview_frame, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(ui->WidgetsDemo_preview_frame, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(ui->WidgetsDemo_preview_frame, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -564,7 +606,7 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     lv_obj_clear_flag(ui->WidgetsDemo_preview_img, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_opa(ui->WidgetsDemo_preview_img, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(ui->WidgetsDemo_preview_img, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(ui->WidgetsDemo_preview_img, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->WidgetsDemo_preview_img, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_img_set_zoom(ui->WidgetsDemo_preview_img, THERMAL_GUI_PREVIEW_IMG_ZOOM);
 
     ui->WidgetsDemo_preview_cross_h = lv_obj_create(ui->WidgetsDemo_preview_frame);
@@ -587,31 +629,32 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     lv_obj_set_style_border_width(ui->WidgetsDemo_preview_cross_v, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(ui->WidgetsDemo_preview_cross_v, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui->WidgetsDemo_preview_center_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_preview_frame, "Center 36.8 C", lv_color_hex(0xf3f5f7), 10, 132);
+    ui->WidgetsDemo_preview_center_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_preview_frame, "Center 36.8 C", lv_color_hex(THERMAL_GUI_COLOR_TEXT), 10, 132);
     lv_obj_set_pos(ui->WidgetsDemo_preview_center_temp, 10, 10);
-    ui->WidgetsDemo_preview_max_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_preview_frame, "Max 128.4 C", lv_color_hex(0xff8b42), 290, 132);
+    ui->WidgetsDemo_preview_max_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_preview_frame, "Max 128.4 C", lv_color_hex(THERMAL_GUI_COLOR_HOT), 290, 132);
     lv_obj_set_pos(ui->WidgetsDemo_preview_max_temp, 290, 10);
-    ui->WidgetsDemo_preview_min_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_preview_frame, "Min 24.1 C", lv_color_hex(0x4cc8ff), 10, 132);
+    ui->WidgetsDemo_preview_min_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_preview_frame, "Min 24.1 C", lv_color_hex(THERMAL_GUI_COLOR_COLD), 10, 132);
     lv_obj_set_pos(ui->WidgetsDemo_preview_min_temp, 10, 282);
-    ui->WidgetsDemo_preview_palette_name = thermal_gui_create_status_badge(ui->WidgetsDemo_preview_frame, "锐化", lv_color_hex(0xffb454), 314, 108);
+    ui->WidgetsDemo_preview_palette_name = thermal_gui_create_status_badge(ui->WidgetsDemo_preview_frame, "锐化", lv_color_hex(THERMAL_GUI_COLOR_ACCENT), 314, 108);
     lv_obj_set_pos(ui->WidgetsDemo_preview_palette_name, 314, 282);
 
     ui->WidgetsDemo_preview_max_marker = thermal_gui_create_marker_label(ui->WidgetsDemo_preview_frame, "高", 350, 80);
 
     ui->WidgetsDemo_preview_min_marker = thermal_gui_create_marker_label(ui->WidgetsDemo_preview_frame, "低", 58, 230);
 
-    ui->WidgetsDemo_btn_fullscreen = thermal_gui_create_footer_button(ui->WidgetsDemo_preview_panel, "全屏", 372, 76, lv_color_hex(0x7bc6ff), true);
-    lv_obj_set_pos(ui->WidgetsDemo_btn_fullscreen, 376, 8);
+    ui->WidgetsDemo_btn_fullscreen = thermal_gui_create_footer_button(ui->WidgetsDemo_preview_panel, "全屏", 372, 76, lv_color_hex(THERMAL_GUI_COLOR_COLD), true);
+    lv_obj_set_pos(ui->WidgetsDemo_btn_fullscreen, 376, 4);
     lv_obj_set_size(ui->WidgetsDemo_btn_fullscreen, 76, 28);
 
     ui->WidgetsDemo_footer_bar = lv_obj_create(ui->WidgetsDemo);
     lv_obj_set_pos(ui->WidgetsDemo_footer_bar, THERMAL_GUI_MARGIN, 420);
     lv_obj_set_size(ui->WidgetsDemo_footer_bar, 776, THERMAL_GUI_BOTTOM_HEIGHT);
     lv_obj_clear_flag(ui->WidgetsDemo_footer_bar, LV_OBJ_FLAG_SCROLLABLE);
-    thermal_gui_style_panel(ui->WidgetsDemo_footer_bar, lv_color_hex(0x20262c), lv_color_hex(0x39424b), 12);
+    thermal_gui_style_panel(ui->WidgetsDemo_footer_bar, lv_color_hex(THERMAL_GUI_COLOR_SURFACE),
+                            lv_color_hex(THERMAL_GUI_COLOR_BORDER), 8);
 
-    ui->WidgetsDemo_btn_save = thermal_gui_create_footer_button(ui->WidgetsDemo_footer_bar, "保存", 10, 110, lv_color_hex(0xffb454), true);
-    ui->WidgetsDemo_btn_ffc = thermal_gui_create_footer_button(ui->WidgetsDemo_footer_bar, "手动 FFC", 134, 124, lv_color_hex(0x48b3ff), true);
+    ui->WidgetsDemo_btn_save = thermal_gui_create_footer_button(ui->WidgetsDemo_footer_bar, "保存", 8, 142, lv_color_hex(THERMAL_GUI_COLOR_ACCENT), true);
+    ui->WidgetsDemo_btn_ffc = thermal_gui_create_footer_button(ui->WidgetsDemo_footer_bar, "手动 FFC", 160, 142, lv_color_hex(THERMAL_GUI_COLOR_COLD), true);
     ui->WidgetsDemo_btn_snapshot = NULL;
     ui->WidgetsDemo_btn_alarm = NULL;
 
@@ -619,7 +662,7 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
     lv_obj_set_pos(brand_panel, 518, 2);
     lv_obj_set_size(brand_panel, 246, 52);
     lv_obj_clear_flag(brand_panel, LV_OBJ_FLAG_SCROLLABLE);
-    thermal_gui_style_panel(brand_panel, lv_color_hex(0x0b1015), lv_color_hex(0x2f3d49), 8);
+    thermal_gui_style_panel(brand_panel, lv_color_hex(0x030506), lv_color_hex(THERMAL_GUI_COLOR_BORDER), 6);
     lv_obj_set_style_border_opa(brand_panel, LV_OPA_70, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(brand_panel, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
 
@@ -638,6 +681,9 @@ void setup_scr_WidgetsDemo(lv_ui *ui)
 void setup_scr_WidgetsDemoFullscreen(lv_ui *ui)
 {
     lv_obj_t *button = NULL;
+    lv_obj_t *left_rail = NULL;
+    lv_obj_t *right_rail = NULL;
+    lv_obj_t *label = NULL;
 
     ui->WidgetsDemo_fullscreen = lv_obj_create(NULL);
     lv_obj_set_size(ui->WidgetsDemo_fullscreen, THERMAL_GUI_SCREEN_WIDTH, THERMAL_GUI_SCREEN_HEIGHT);
@@ -647,6 +693,37 @@ void setup_scr_WidgetsDemoFullscreen(lv_ui *ui)
     lv_obj_set_style_bg_opa(ui->WidgetsDemo_fullscreen, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(ui->WidgetsDemo_fullscreen, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(ui->WidgetsDemo_fullscreen, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    left_rail = lv_obj_create(ui->WidgetsDemo_fullscreen);
+    lv_obj_set_pos(left_rail, 0, 0);
+    lv_obj_set_size(left_rail, THERMAL_GUI_FULLSCREEN_PREVIEW_X, THERMAL_GUI_SCREEN_HEIGHT);
+    lv_obj_clear_flag(left_rail, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(left_rail, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(left_rail, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_side(left_rail, LV_BORDER_SIDE_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(left_rail, lv_color_hex(THERMAL_GUI_COLOR_BORDER), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(left_rail, lv_color_hex(THERMAL_GUI_COLOR_SURFACE), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(left_rail, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(left_rail, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    label = lv_label_create(left_rail);
+    lv_label_set_text(label, "LIVE");
+    lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -18);
+    lv_obj_set_style_text_font(label, THERMAL_GUI_TEXT_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(label, lv_color_hex(THERMAL_GUI_COLOR_OK), LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    right_rail = lv_obj_create(ui->WidgetsDemo_fullscreen);
+    lv_obj_set_pos(right_rail, THERMAL_GUI_FULLSCREEN_PREVIEW_X + THERMAL_GUI_FULLSCREEN_PREVIEW_WIDTH, 0);
+    lv_obj_set_size(right_rail, THERMAL_GUI_SCREEN_WIDTH - THERMAL_GUI_FULLSCREEN_PREVIEW_X - THERMAL_GUI_FULLSCREEN_PREVIEW_WIDTH,
+                    THERMAL_GUI_SCREEN_HEIGHT);
+    lv_obj_clear_flag(right_rail, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(right_rail, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(right_rail, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_side(right_rail, LV_BORDER_SIDE_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(right_rail, lv_color_hex(THERMAL_GUI_COLOR_BORDER), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(right_rail, lv_color_hex(THERMAL_GUI_COLOR_SURFACE), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(right_rail, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(right_rail, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui->WidgetsDemo_fullscreen_preview_frame = lv_obj_create(ui->WidgetsDemo_fullscreen);
     lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_frame, THERMAL_GUI_FULLSCREEN_PREVIEW_X, THERMAL_GUI_FULLSCREEN_PREVIEW_Y);
@@ -686,20 +763,20 @@ void setup_scr_WidgetsDemoFullscreen(lv_ui *ui)
     lv_obj_set_style_border_width(ui->WidgetsDemo_fullscreen_preview_cross_v, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(ui->WidgetsDemo_fullscreen_preview_cross_v, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui->WidgetsDemo_fullscreen_preview_center_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "Center 36.8 C", lv_color_hex(0xf3f5f7), 12, 148);
+    ui->WidgetsDemo_fullscreen_preview_center_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "Center 36.8 C", lv_color_hex(THERMAL_GUI_COLOR_TEXT), 12, 148);
     lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_center_temp, 12, 12);
-    ui->WidgetsDemo_fullscreen_preview_max_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "Max 128.4 C", lv_color_hex(0xff8b42), 480, 148);
-    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_max_temp, 480, 12);
-    ui->WidgetsDemo_fullscreen_preview_min_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "Min 24.1 C", lv_color_hex(0x4cc8ff), 12, 148);
-    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_min_temp, 12, 436);
-    ui->WidgetsDemo_fullscreen_preview_palette_name = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "锐化", lv_color_hex(0xffb454), 520, 108);
-    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_palette_name, 520, 436);
+    ui->WidgetsDemo_fullscreen_preview_max_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "Max 128.4 C", lv_color_hex(THERMAL_GUI_COLOR_HOT), 352, 148);
+    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_max_temp, 352, 12);
+    ui->WidgetsDemo_fullscreen_preview_min_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "Min 24.1 C", lv_color_hex(THERMAL_GUI_COLOR_COLD), 12, 148);
+    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_min_temp, 12, 340);
+    ui->WidgetsDemo_fullscreen_preview_palette_name = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "锐化", lv_color_hex(THERMAL_GUI_COLOR_ACCENT), 392, 108);
+    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_palette_name, 392, 340);
 
-    ui->WidgetsDemo_fullscreen_preview_max_marker = thermal_gui_create_marker_label(ui->WidgetsDemo_fullscreen_preview_frame, "高", 420, 96);
+    ui->WidgetsDemo_fullscreen_preview_max_marker = thermal_gui_create_marker_label(ui->WidgetsDemo_fullscreen_preview_frame, "高", 350, 76);
 
-    ui->WidgetsDemo_fullscreen_preview_min_marker = thermal_gui_create_marker_label(ui->WidgetsDemo_fullscreen_preview_frame, "低", 80, 288);
+    ui->WidgetsDemo_fullscreen_preview_min_marker = thermal_gui_create_marker_label(ui->WidgetsDemo_fullscreen_preview_frame, "低", 64, 230);
 
-    button = thermal_gui_create_footer_button(ui->WidgetsDemo_fullscreen, "设置", THERMAL_GUI_FULLSCREEN_BUTTON_X, THERMAL_GUI_FULLSCREEN_BUTTON_WIDTH, lv_color_hex(0x7bc6ff), true);
+    button = thermal_gui_create_footer_button(ui->WidgetsDemo_fullscreen, "设置", THERMAL_GUI_FULLSCREEN_BUTTON_X, THERMAL_GUI_FULLSCREEN_BUTTON_WIDTH, lv_color_hex(THERMAL_GUI_COLOR_COLD), true);
     lv_obj_set_pos(button, THERMAL_GUI_FULLSCREEN_BUTTON_X, THERMAL_GUI_FULLSCREEN_BUTTON_Y);
     lv_obj_set_size(button, THERMAL_GUI_FULLSCREEN_BUTTON_WIDTH, THERMAL_GUI_FULLSCREEN_BUTTON_HEIGHT);
     ui->WidgetsDemo_fullscreen_btn_settings = button;

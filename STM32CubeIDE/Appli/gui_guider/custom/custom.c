@@ -12,10 +12,10 @@
 #define CFG_THERMAL_GUI_SNAPSHOT_MAX_WIDTH       640U
 #define CFG_THERMAL_GUI_SNAPSHOT_MAX_HEIGHT      480U
 #define CFG_THERMAL_GUI_SNAPSHOT_MAX_PIXELS      (CFG_THERMAL_GUI_SNAPSHOT_MAX_WIDTH * CFG_THERMAL_GUI_SNAPSHOT_MAX_HEIGHT)
-#define CFG_THERMAL_GUI_ACCENT_COLOR             0xffb454U
-#define CFG_THERMAL_GUI_BG_COLOR                 0x141a1fU
-#define CFG_THERMAL_GUI_PANEL_COLOR              0x20262cU
-#define CFG_THERMAL_GUI_BORDER_COLOR             0x39424bU
+#define CFG_THERMAL_GUI_ACCENT_COLOR             0xffa23aU
+#define CFG_THERMAL_GUI_BG_COLOR                 0x050709U
+#define CFG_THERMAL_GUI_PANEL_COLOR              0x0b0f13U
+#define CFG_THERMAL_GUI_BORDER_COLOR             0x26313bU
 
 static lv_obj_t *g_snapshot_gallery_screen = NULL;
 static lv_obj_t *g_snapshot_gallery_title = NULL;
@@ -155,10 +155,11 @@ static lv_obj_t *thermal_gui_create_custom_button(lv_obj_t *parent,
 
     button = lv_btn_create(parent);
     lv_obj_set_pos(button, x, y);
-    lv_obj_set_size(button, width, 34);
+    lv_obj_set_size(button, width, 38);
     lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_radius(button, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(button, lv_color_hex(0x232b31), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(button, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x11171d), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x202a32), LV_PART_MAIN | LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(button, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_color(button, lv_color_hex(accent), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1236,7 +1237,7 @@ static void thermal_gui_gallery_create_screen(lv_ui *ui)
     lv_obj_set_pos(g_snapshot_gallery_panel, 28, 92);
     lv_obj_set_size(g_snapshot_gallery_panel, 682, 360);
     lv_obj_clear_flag(g_snapshot_gallery_panel, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_radius(g_snapshot_gallery_panel, 14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(g_snapshot_gallery_panel, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(g_snapshot_gallery_panel, lv_color_hex(CFG_THERMAL_GUI_PANEL_COLOR), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(g_snapshot_gallery_panel, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(g_snapshot_gallery_panel, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1246,8 +1247,8 @@ static void thermal_gui_gallery_create_screen(lv_ui *ui)
     g_snapshot_gallery_img = lv_img_create(g_snapshot_gallery_panel);
     lv_obj_add_flag(g_snapshot_gallery_img, LV_OBJ_FLAG_HIDDEN);
 
-    g_snapshot_gallery_btn_back = thermal_gui_create_custom_button(g_snapshot_gallery_screen, "Back", 728, 92, 52, 0x7bc6ffU);
-    g_snapshot_gallery_btn_prev = thermal_gui_create_custom_button(g_snapshot_gallery_screen, "Prev", 728, 150, 52, 0x4db6ffU);
+    g_snapshot_gallery_btn_back = thermal_gui_create_custom_button(g_snapshot_gallery_screen, "Back", 728, 92, 52, 0x45bfffU);
+    g_snapshot_gallery_btn_prev = thermal_gui_create_custom_button(g_snapshot_gallery_screen, "Prev", 728, 150, 52, 0x45bfffU);
     g_snapshot_gallery_btn_next = thermal_gui_create_custom_button(g_snapshot_gallery_screen, "Next", 728, 208, 52, CFG_THERMAL_GUI_ACCENT_COLOR);
     g_snapshot_gallery_btn_delete = thermal_gui_create_custom_button(g_snapshot_gallery_screen, "Delete", 720, 266, 60, 0xff6b6bU);
 
@@ -1272,7 +1273,7 @@ void custom_init(lv_ui *ui)
     }
 
     g_snapshot_ui = ui;
-    thermal_gui_set_child_label_text(ui->WidgetsDemo_btn_save, "Snapshot");
+    thermal_gui_set_child_label_text(ui->WidgetsDemo_btn_save, "拍照");
     lv_obj_add_event_cb(ui->WidgetsDemo_btn_save, thermal_gui_snapshot_save_event_cb, LV_EVENT_CLICKED, ui);
 
     g_snapshot_entry_button = thermal_gui_create_custom_button(ui->WidgetsDemo_tab_system,

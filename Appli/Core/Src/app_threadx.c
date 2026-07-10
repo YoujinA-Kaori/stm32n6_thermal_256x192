@@ -122,23 +122,26 @@ typedef struct
 #define CFG_THERMAL_AI_SELF_TEST_ENABLE       0U
 #define CFG_UART_COMMAND_THREAD_STACK_SIZE    4096U
 #define CFG_UART_COMMAND_THREAD_PRIORITY      16U
-#define CFG_UART_COMMAND_RX_TIMEOUT_MS        20U
 #define CFG_UART_FILE_WEB_TIMEOUT_MS          4000U
 #define CFG_UART_COMMAND_LINE_MAX             96U
+#define CFG_UART_COMMAND_RX_RING_SIZE          128U
+#define CFG_UART_COMMAND_RX_RING_MASK          (CFG_UART_COMMAND_RX_RING_SIZE - 1U)
 #define CFG_UART_COMMAND_TX_LINE_MAX          768U
 #define CFG_UART_FILE_BASE64_CHUNK_BYTES      384U
 #define CFG_UART_FILE_BASE64_CHUNK_TEXT       (((CFG_UART_FILE_BASE64_CHUNK_BYTES + 2U) / 3U) * 4U)
 #define CFG_UART_FILE_MAX_LISTED_SNAPSHOTS    32U
 #define CFG_UART_FILE_NAME_STRIDE             CFG_APP_FILEX_SNAPSHOT_NAME_LEN
-#define CFG_UART_FILE_MAX_PIXELS              (CFG_GUI_FULLSCREEN_WIDTH * CFG_GUI_FULLSCREEN_HEIGHT)
+#define CFG_UART_FILE_MAX_WIDTH               640U
+#define CFG_UART_FILE_MAX_HEIGHT              480U
+#define CFG_UART_FILE_MAX_PIXELS              (CFG_UART_FILE_MAX_WIDTH * CFG_UART_FILE_MAX_HEIGHT)
 #define CFG_UART_FILE_WEB_TIMEOUT_TICKS       (((CFG_UART_FILE_WEB_TIMEOUT_MS * TX_TIMER_TICKS_PER_SECOND) + 999U) / 1000U)
 #define CFG_LIBIRTEMP_TEST_EMISSIVITY         0.95F
 #define CFG_LIBIRTEMP_TEST_TAU_Q14            16384U
 #define CFG_LIBIRTEMP_TEST_AMBIENT_TEMP_C     25.0F
 #define CFG_GUI_PREVIEW_WIDTH                 432U
 #define CFG_GUI_PREVIEW_HEIGHT                324U
-#define CFG_GUI_FULLSCREEN_WIDTH       640U
-#define CFG_GUI_FULLSCREEN_HEIGHT             480U
+#define CFG_GUI_FULLSCREEN_WIDTH              512U
+#define CFG_GUI_FULLSCREEN_HEIGHT             384U
 #define CFG_GUI_OVERLAY_UPDATE_PERIOD_MS      120U
 #define CFG_EXTREMA_QUERY_THREAD_STACK_SIZE   2048U
 #define CFG_EXTREMA_QUERY_THREAD_PRIORITY     18U
@@ -265,6 +268,10 @@ static BQ27441_Device_t g_battery_device;
 static uint8_t g_uart_stream_tx_buffer[sizeof(app_threadx_uart_stream_header_t) + CFG_UART_STREAM_PAYLOAD_BYTES]
   __attribute__((aligned(32)));
 static uint8_t g_uart_command_rx_line[CFG_UART_COMMAND_LINE_MAX];
+static uint8_t g_uart_command_rx_ring[CFG_UART_COMMAND_RX_RING_SIZE];
+static uint8_t g_uart_command_rx_irq_byte;
+static volatile uint16_t g_uart_command_rx_head = 0U;
+static volatile uint16_t g_uart_command_rx_tail = 0U;
 static uint8_t g_uart_command_tx_line[CFG_UART_COMMAND_TX_LINE_MAX];
 static uint8_t g_uart_file_chunk_base64[CFG_UART_FILE_BASE64_CHUNK_TEXT + 4U];
 static CHAR g_uart_file_snapshot_names[CFG_UART_FILE_MAX_LISTED_SNAPSHOTS][CFG_UART_FILE_NAME_STRIDE];
@@ -394,6 +401,7 @@ static VOID app_threadx_uart_command_thread_entry(ULONG thread_input);
 static VOID app_threadx_extrema_query_thread_entry(ULONG thread_input);
 static VOID app_threadx_battery_thread_entry(ULONG thread_input);
 static void app_threadx_uart_process_command_line(const uint8_t *command_line_ptr);
+static uint8_t app_threadx_uart_command_rx_pop(uint8_t *rx_byte_ptr);
 static UINT app_threadx_uart_send_text(const char *text_ptr);
 static UINT app_threadx_uart_send_text_fmt(const char *format_ptr, ...);
 static void app_threadx_uart_wait_for_tx_idle(void);
@@ -2306,6 +2314,14 @@ static void app_threadx_gui_build_scaled_frame(const uint16_t *source_frame,
       (source_width == 0U) || (source_height == 0U) ||
       (dest_width == 0U) || (dest_height == 0U))
   {
+    return;
+  }
+
+  if ((source_width == dest_width) && (source_height == dest_height))
+  {
+    memcpy(dest_frame,
+           source_frame,
+           (size_t)source_width * (size_t)source_height * sizeof(uint16_t));
     return;
   }
 
@@ -4755,17 +4771,20 @@ static VOID app_threadx_gui_thread_entry(ULONG thread_input)
     if ((frame_counter_now != 0U) && (frame_counter_now != frame_counter_last))
     {
       frame_counter_last = frame_counter_now;
-      app_threadx_gui_build_scaled_frame(tiny1c_thermal_app_get_rgb565_frame(),
-                                        g_gui_preview_rgb565_frame,
-                                        tiny1c_thermal_app_get_preview_width(),
-                                        tiny1c_thermal_app_get_preview_height(),
-                                        CFG_GUI_PREVIEW_WIDTH,
-                                        CFG_GUI_PREVIEW_HEIGHT);
-      lv_obj_invalidate(guider_ui.WidgetsDemo_preview_img);
       if (thermal_gui_is_fullscreen_active() != 0U)
       {
         app_threadx_gui_update_fullscreen_image();
         lv_obj_invalidate(guider_ui.WidgetsDemo_fullscreen_preview_img);
+      }
+      else
+      {
+        app_threadx_gui_build_scaled_frame(tiny1c_thermal_app_get_rgb565_frame(),
+                                          g_gui_preview_rgb565_frame,
+                                          tiny1c_thermal_app_get_preview_width(),
+                                          tiny1c_thermal_app_get_preview_height(),
+                                          CFG_GUI_PREVIEW_WIDTH,
+                                          CFG_GUI_PREVIEW_HEIGHT);
+        lv_obj_invalidate(guider_ui.WidgetsDemo_preview_img);
       }
     }
 
@@ -5142,6 +5161,32 @@ static void app_threadx_uart_process_command_line(const uint8_t *command_line_pt
 }
 
 /**
+  * @brief  Pop one byte captured by the USART1 receive interrupt.
+  * @param  rx_byte_ptr Destination byte pointer.
+  * @retval uint8_t 1 when a byte was returned, otherwise 0.
+  */
+static uint8_t app_threadx_uart_command_rx_pop(uint8_t *rx_byte_ptr)
+{
+  uint16_t tail;
+
+  if (rx_byte_ptr == NULL)
+  {
+    return 0U;
+  }
+
+  tail = g_uart_command_rx_tail;
+  if (tail == g_uart_command_rx_head)
+  {
+    return 0U;
+  }
+
+  __DMB();
+  *rx_byte_ptr = g_uart_command_rx_ring[tail];
+  g_uart_command_rx_tail = (uint16_t)((tail + 1U) & CFG_UART_COMMAND_RX_RING_MASK);
+  return 1U;
+}
+
+/**
   * @brief  UART command thread entry for gallery/file transfer commands.
   * @param  thread_input Unused thread input parameter.
   * @retval None
@@ -5151,11 +5196,13 @@ static VOID app_threadx_uart_command_thread_entry(ULONG thread_input)
   uint32_t command_length = 0U;
 
   TX_PARAMETER_NOT_USED(thread_input);
+  g_uart_command_rx_head = 0U;
+  g_uart_command_rx_tail = 0U;
+  (void)HAL_UART_Receive_IT(&huart1, &g_uart_command_rx_irq_byte, 1U);
 
   for (;;)
   {
     uint8_t rx_byte = 0U;
-    HAL_StatusTypeDef hal_status;
     ULONG tick_now;
 
     if ((g_uart_file_hold_mask & APP_UART_FILE_HOLD_WEB) != 0U)
@@ -5167,9 +5214,12 @@ static VOID app_threadx_uart_command_thread_entry(ULONG thread_input)
       }
     }
 
-    hal_status = HAL_UART_Receive(&huart1, &rx_byte, 1U, CFG_UART_COMMAND_RX_TIMEOUT_MS);
-    if (hal_status != HAL_OK)
+    if (app_threadx_uart_command_rx_pop(&rx_byte) == 0U)
     {
+      if (huart1.RxState == HAL_UART_STATE_READY)
+      {
+        (void)HAL_UART_Receive_IT(&huart1, &g_uart_command_rx_irq_byte, 1U);
+      }
       tx_thread_sleep(1U);
       continue;
     }
@@ -5400,6 +5450,28 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uart_handle)
 }
 
 /**
+  * @brief  USART1 receive-complete callback for the file-command ring buffer.
+  * @param  uart_handle Pointer to the UART handle.
+  * @retval None
+  */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart_handle)
+{
+  if ((uart_handle != NULL) && (uart_handle->Instance == USART1))
+  {
+    uint16_t head = g_uart_command_rx_head;
+    uint16_t next_head = (uint16_t)((head + 1U) & CFG_UART_COMMAND_RX_RING_MASK);
+
+    if (next_head != g_uart_command_rx_tail)
+    {
+      g_uart_command_rx_ring[head] = g_uart_command_rx_irq_byte;
+      __DMB();
+      g_uart_command_rx_head = next_head;
+    }
+    (void)HAL_UART_Receive_IT(&huart1, &g_uart_command_rx_irq_byte, 1U);
+  }
+}
+
+/**
   * @brief  UART error callback.
   * @param  uart_handle Pointer to the UART handle.
   * @retval None
@@ -5409,6 +5481,10 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart_handle)
   if ((uart_handle != NULL) && (uart_handle->Instance == USART1))
   {
     g_uart_stream_tx_busy = 0U;
+    if (huart1.RxState == HAL_UART_STATE_READY)
+    {
+      (void)HAL_UART_Receive_IT(&huart1, &g_uart_command_rx_irq_byte, 1U);
+    }
   }
 }
 
