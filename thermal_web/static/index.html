@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>热成像网页查看器</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-kicker">STM32N6</div>
+        <h1>热成像查看器</h1>
+        <p>UART Temp14 实时预览 + SD 图库导出</p>
+      </div>
+
+      <img class="brand-image" src="/static/assets/thermal_ai_banner.png" alt="热成像品牌横幅">
+
+      <div class="status-chip" id="statusChip">待连接</div>
+
+      <div class="panel">
+        <div class="panel-row"><span>串口</span><strong id="serialPort">-</strong></div>
+        <div class="panel-row"><span>波特率</span><strong id="baudRate">-</strong></div>
+        <div class="panel-row"><span>帧号</span><strong id="frameCounter">-</strong></div>
+        <div class="panel-row"><span>分辨率</span><strong id="resolution">-</strong></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">连接</div>
+        <label class="field">
+          <span>串口选择</span>
+          <select id="serialSelect"></select>
+        </label>
+        <div class="dual-actions">
+          <button id="refreshPortsBtn" class="secondary">刷新</button>
+          <button id="connectBtn">连接</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">显示</div>
+        <label class="field">
+          <span>伪彩模式</span>
+          <select id="paletteSelect">
+            <option value="thermal">热力</option>
+            <option value="rainbow">彩虹</option>
+            <option value="iron">铁红</option>
+            <option value="gray">灰度</option>
+          </select>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="autoRangeCheck" checked>
+          <span>自动温标</span>
+        </label>
+        <div class="slider-group">
+          <div class="slider-head"><span>低温</span><strong id="lowRangeValue">--</strong></div>
+          <input id="lowRangeSlider" type="range" min="-20" max="120" step="1" value="20">
+        </div>
+        <div class="slider-group">
+          <div class="slider-head"><span>高温</span><strong id="highRangeValue">--</strong></div>
+          <input id="highRangeSlider" type="range" min="-20" max="120" step="1" value="50">
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">温度</div>
+        <div class="big-value" id="centerValue">中心 --.- °C</div>
+        <div class="panel-row"><span>最高</span><strong id="maxValue">-</strong></div>
+        <div class="panel-row"><span>最低</span><strong id="minValue">-</strong></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">SD 图库</div>
+        <div class="gallery-actions">
+          <button id="syncGalleryBtn" class="secondary">同步图库</button>
+          <button id="downloadSelectedBtn">下载选中</button>
+        </div>
+        <div class="gallery-status" id="galleryStatus">未同步，先同步后选择文件</div>
+        <div class="gallery-download hidden" id="galleryDownloadWrap">
+          <a id="galleryDownloadLink" href="#" target="_blank" rel="noopener">打开最新下载文件</a>
+        </div>
+        <ul class="gallery-list" id="galleryList"></ul>
+      </div>
+
+      <div class="actions">
+        <button id="pauseBtn" class="secondary">暂停</button>
+        <button id="shotBtn">截图</button>
+      </div>
+    </aside>
+
+    <main class="viewer">
+      <div class="canvas-shell">
+        <canvas id="thermalCanvas"></canvas>
+      </div>
+      <div class="footer-bar">
+        <div class="legend">
+          <span>低</span>
+          <div class="legend-strip"></div>
+          <span>高</span>
+        </div>
+        <div class="hint">下载 SD 图像时，实时流会暂时暂停</div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.tmp
+*.log
+
+# Python cache / env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.hypothesis/
+.venv/
+venv/
+env/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+
+# STM32CubeIDE build outputs
+Binary/
+STM32CubeIDE/Appli/Debug/
+STM32CubeIDE/Appli/Release/
+
+# Upstream LVGL development material is not used by the firmware build.
+STM32CubeIDE/Appli/lvgl/demos/
+STM32CubeIDE/Appli/lvgl/examples/
+STM32CubeIDE/Appli/lvgl/tests/
+STM32CubeIDE/Appli/lvgl/env_support/
+STM32CubeIDE/Appli/lvgl/scripts/
+STM32CubeIDE/Appli/lvgl/docs/
+
+# Unused vendor archives retained only in the local SDK copy.
+Drivers/__CMSIS_OLD/
+Drivers/__STM32N6xx_HAL_Driver_OLD/
+Drivers/CMSIS/DSP/
+
+# Local generated thermal outputs
+thermal_out/
+thermal_png/
+
+# AI local artifacts
+thermal_ai/artifacts/models/*
+!thermal_ai/artifacts/models/.gitkeep
+thermal_ai/artifacts/reports/*
+!thermal_ai/artifacts/reports/.gitkeep
+thermal_ai/artifacts/cubeai*/
+
+# Android local toolchain and build outputs
+thermal_android_app/.android-sdk/
+thermal_android_app/.gradle/
+thermal_android_app/.kotlin/
+thermal_android_app/.toolchain/
+thermal_android_app/local.properties
+thermal_android_app/app/build/
+thermal_android_app/dist/
+thermal_android_app/captures/
+*.iml
+*.apk
+*.aab
+*.ap_
+*.hprof
+*.jks
+*.keystore
+
+# Web local cache
+thermal_web/__pycache__/
+thermal_web/downloads/
+
+# Generic helper cache
+tools/__pycache__/
+
+# Local assistant / workspace state
+AGENTS.md
+.claude/
+.codex_headless_ws2/
+.headless-ws/
+.headless-ws2/
+.headless-ws3/
+.ai/
+tmp/
+$dir/
+resolution_hits_before.csv
+
+# Duplicate deployment conversion outputs; keep thermal_atonbuf.xSPI2.bin.
+thermal_atonbuf.xSPI2.hex
+thermal_atonbuf.xSPI2.raw
+
+# Optional large local data
+# Uncomment if you do not want to upload datasets
+thermal_ai_dataset/

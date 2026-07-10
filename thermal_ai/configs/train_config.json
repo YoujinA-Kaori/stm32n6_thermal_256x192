@@ -1,0 +1,13 @@
+{
+  "epochs": 60,
+  "batch_size": 24,
+  "learning_rate": 0.001,
+  "early_stopping_patience": 10,
+  "reduce_lr_patience": 5,
+  "reduce_lr_factor": 0.5,
+  "min_learning_rate": 1e-05,
+  "class_loss_weights": {
+    "circuit_board_abnormal_hotspot": 1.0
+  },
+  "seed": 42
+}

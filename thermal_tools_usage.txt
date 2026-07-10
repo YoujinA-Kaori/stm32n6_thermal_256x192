@@ -1,0 +1,190 @@
+STM32N6 Thermal 上位机脚本使用说明
+
+一、文件位置
+
+1. 串口解析脚本
+   D:\PracticeProject\Stm32\stm32n6_thermal_256x192\tools\uart_temp14_parser.py
+
+2. PGM 转 PNG 脚本
+   D:\PracticeProject\Stm32\stm32n6_thermal_256x192\tools\pgm_to_png.py
+
+3. 温度补偿公式说明
+   D:\PracticeProject\Stm32\stm32n6_thermal_256x192\temperature_compensation_formula.md
+
+
+二、推荐执行路径
+
+建议先进入项目根目录再执行命令：
+
+D:\PracticeProject\Stm32\stm32n6_thermal_256x192
+
+
+三、uart_temp14_parser.py 的作用
+
+这个脚本用于解析 STM32 通过 USART1 发出来的温度流二进制包。
+
+它支持两种输入方式：
+
+1. 直接读取串口实时数据
+2. 解析已经保存好的十六进制文本文件
+
+
+四、当前串口协议说明
+
+1. 包头固定为 20 字节
+2. sync_word = 0x55AA
+3. packet_type = 0x0001
+4. frame_width = 256
+5. frame_height = 192
+6. 实时预览 payload_bytes = 24576
+7. 实时预览 payload 为 128x96 的 temp14 数据，由 256x192 原始温度帧 2x2 降采样得到
+8. payload 中每个像素是 uint16，小端格式
+
+温度单位说明：
+
+当前 temp14 值按 1/16 K 解释。
+换算为摄氏度的公式为：
+
+temp_c = raw / 16.0 - 273.15
+
+
+五、实时读取串口
+
+当前串口是 COM3，波特率是 2000000。
+当前固件默认实时预览温度流约为 5 fps，尺寸为 128x96。
+
+命令：
+
+python tools\uart_temp14_parser.py --port COM3 --baud 2000000 --save-pgm --save-bin
+
+说明：
+
+1. --port COM3
+   指定串口号
+
+2. --baud 2000000
+   指定波特率
+
+3. --save-pgm
+   保存每帧灰度预览图
+
+4. --save-bin
+   保存每帧原始温度 payload
+
+
+六、解析十六进制文本文件
+
+如果你已经把串口助手里的十六进制数据保存成文本文件，例如 capture.txt，
+可以直接离线解析：
+
+python tools\uart_temp14_parser.py --hex-file capture.txt --save-pgm
+
+说明：
+
+1. 这个模式不需要连接串口
+2. capture.txt 里可以是空格分隔的十六进制文本
+3. 例如：AA 55 01 00 ...
+
+
+七、输出目录
+
+默认输出目录为：
+
+D:\PracticeProject\Stm32\stm32n6_thermal_256x192\thermal_out
+
+里面可能出现的文件：
+
+1. frame_XXXXXXXX.bin
+   原始温度帧数据
+   格式：128x96，uint16，小端
+   大小固定：24576 字节
+   来源：256x192 temp14 经2x2平均降采样后的实时预览payload
+
+2. frame_XXXXXXXX.pgm
+   灰度预览图
+
+3. frame_XXXXXXXX.csv
+   如果运行时加了 --save-csv，则会额外保存 CSV
+
+
+八、bin 文件格式说明
+
+每个 .bin 文件只包含 payload，不包含串口包头。
+
+格式如下：
+
+1. 宽度：128
+2. 高度：96
+3. 数据类型：uint16
+4. 字节序：little-endian
+5. 排列方式：逐行存储（row-major）
+
+坐标换算：
+
+1. index = y * 128 + x
+2. y = index // 128
+3. x = index % 128
+
+Python 读取示例：
+
+import numpy as np
+frame = np.fromfile("frame_00016449.bin", dtype="<u2").reshape(96, 128)
+
+注意：该bin是串口实时预览数据，不是原生256x192训练帧。
+
+
+九、PGM 转 PNG
+
+Windows 自带图片查看器通常不能直接打开 .pgm。
+可以先把 thermal_out 里的 PGM 批量转成 PNG。
+
+批量转换命令：
+
+python tools\pgm_to_png.py --input thermal_out --output thermal_png
+
+说明：
+
+1. thermal_out 是输入目录
+2. thermal_png 是输出目录
+3. 转换后会生成同名的 .png 文件
+
+
+十、单张 PGM 转 PNG
+
+命令：
+
+python tools\pgm_to_png.py --input thermal_out\frame_00016241.pgm --output thermal_out\frame_00016241.png
+
+
+十一、如何停止脚本
+
+实时串口接收过程中，按：
+
+Ctrl + C
+
+
+十二、常见报错
+
+1. 报错：pyserial is required: No module named 'serial'
+   原因：没有安装 pyserial
+
+2. 串口打不开
+   常见原因：
+   - 串口号不对
+   - 串口被其他软件占用
+   - 板子没有正确连接
+
+3. 没有输出文件
+   常见原因：
+   - 串口没有收到有效包头
+   - 波特率不对
+   - 板端没有在发数据
+
+
+十三、建议的实际使用顺序
+
+1. 板子上电，确认 LCD 正常显示伪彩画面
+2. 电脑连接 COM3
+3. 运行串口解析命令
+4. 观察 thermal_out 目录是否持续生成 .bin 和 .pgm
+5. 如需直接查看图像，再运行 PGM 转 PNG 脚本

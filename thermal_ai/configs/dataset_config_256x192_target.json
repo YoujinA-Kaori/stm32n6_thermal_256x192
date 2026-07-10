@@ -1,0 +1,81 @@
+{
+  "status": "target_not_active",
+  "note": "Activate only after collecting and annotating native 256x192 temp14 frames and regenerating the CubeAI network.",
+  "project_name": "stm32n6_thermal_detector_256x192",
+  "input": {
+    "width": 256,
+    "height": 192,
+    "channels": 1,
+    "tensor_layout": "NHWC"
+  },
+  "raw_format": {
+    "dtype": "uint16_le",
+    "temperature_unit": "kelvin_x16",
+    "frame_bytes": 98304
+  },
+  "class_names": [
+    "circuit_board_normal",
+    "circuit_board_abnormal_hotspot"
+  ],
+  "dataset_paths": {
+    "raw_root": "thermal_ai_dataset/raw_256x192",
+    "processed_root": "thermal_ai_dataset/processed_256x192"
+  },
+  "split": {
+    "train_ratio": 0.7,
+    "val_ratio": 0.15,
+    "test_ratio": 0.15,
+    "group_policy": "session_or_filename_prefix",
+    "seed": 42
+  },
+  "normalization": {
+    "mode": "delta_from_frame_percentile_clip",
+    "background_percentile": 50.0,
+    "delta_c_min": -8.0,
+    "delta_c_max": 60.0,
+    "output_dtype": "float32",
+    "invalid_temperature_filter": {
+      "enabled": true,
+      "min_c": -40.0,
+      "max_c": 180.0,
+      "replacement": "frame_percentile",
+      "replacement_percentile": 50.0,
+      "max_invalid_ratio": 0.05
+    }
+  },
+  "supervision": {
+    "mode": "anchor_free_detection",
+    "annotation_sidecar_suffix": ".json",
+    "require_bbox_annotation": true,
+    "annotation_type": "bbox_xyxy"
+  },
+  "detector": {
+    "detection_class_names": [
+      "circuit_board_abnormal_hotspot"
+    ],
+    "grid_width": 32,
+    "grid_height": 24,
+    "objectness_threshold": 0.55,
+    "class_threshold": 0.5,
+    "score_threshold": 0.98,
+    "score_thresholds": {
+      "circuit_board_abnormal_hotspot": 0.98
+    },
+    "nms_iou_threshold": 0.15,
+    "eval_iou_threshold": 0.5,
+    "max_detections_per_image": 2,
+    "postprocess_filter": {
+      "enabled": true,
+      "circuit_board_abnormal_hotspot": {
+        "min_width_px": 10.0,
+        "min_height_px": 10.0,
+        "min_area_px": 1080.0,
+        "max_area_px": 6400.0
+      }
+    }
+  },
+  "artifacts": {
+    "model_dir": "thermal_ai/artifacts/models_256x192",
+    "report_dir": "thermal_ai/artifacts/reports_256x192"
+  }
+}

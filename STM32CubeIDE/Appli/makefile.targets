@@ -1,0 +1,6 @@
+################################################################################
+# Shared makefile overrides for CubeIDE-generated Debug/Release builds.
+################################################################################
+
+LIBS += ../ThirdParty/libirtemp/libirtemp.lib
+LIBS += ../../../Middlewares/ST/AI/Lib/NetworkRuntime1020_CM55_GCC.a
