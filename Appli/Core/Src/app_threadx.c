@@ -140,8 +140,8 @@ typedef struct
 #define CFG_LIBIRTEMP_TEST_AMBIENT_TEMP_C     25.0F
 #define CFG_GUI_PREVIEW_WIDTH                 432U
 #define CFG_GUI_PREVIEW_HEIGHT                324U
-#define CFG_GUI_FULLSCREEN_WIDTH              512U
-#define CFG_GUI_FULLSCREEN_HEIGHT             384U
+#define CFG_GUI_FULLSCREEN_WIDTH              640U
+#define CFG_GUI_FULLSCREEN_HEIGHT             480U
 #define CFG_GUI_OVERLAY_UPDATE_PERIOD_MS      120U
 #define CFG_EXTREMA_QUERY_THREAD_STACK_SIZE   2048U
 #define CFG_EXTREMA_QUERY_THREAD_PRIORITY     18U
@@ -2291,6 +2291,52 @@ static void app_threadx_gui_update_preview_layer(lv_obj_t *preview_img,
 }
 
 /**
+  * @brief  Expand an RGB565 frame by an exact 4:5 ratio without per-pixel division.
+  * @param  source_frame Source RGB565 frame.
+  * @param  dest_frame Destination RGB565 frame.
+  * @param  source_width Source frame width; must be a multiple of four.
+  * @param  source_height Source frame height; must be a multiple of four.
+  * @param  dest_width Destination frame width; must equal source width times 5/4.
+  * @retval None
+  */
+static void app_threadx_gui_expand_frame_4_to_5(const uint16_t *source_frame,
+                                                uint16_t *dest_frame,
+                                                uint16_t source_width,
+                                                uint16_t source_height,
+                                                uint16_t dest_width)
+{
+  uint32_t source_y;
+  uint32_t dest_y = 0U;
+
+  for (source_y = 0U; source_y < source_height; source_y++)
+  {
+    const uint16_t *source_row = &source_frame[source_y * (uint32_t)source_width];
+    uint16_t *dest_row = &dest_frame[dest_y * (uint32_t)dest_width];
+    uint32_t source_x;
+    uint32_t dest_x = 0U;
+
+    for (source_x = 0U; source_x < source_width; source_x += 4U)
+    {
+      dest_row[dest_x] = source_row[source_x];
+      dest_row[dest_x + 1U] = source_row[source_x + 1U];
+      dest_row[dest_x + 2U] = source_row[source_x + 2U];
+      dest_row[dest_x + 3U] = source_row[source_x + 2U];
+      dest_row[dest_x + 4U] = source_row[source_x + 3U];
+      dest_x += 5U;
+    }
+
+    dest_y++;
+    if ((source_y & 3U) == 2U)
+    {
+      memcpy(&dest_frame[dest_y * (uint32_t)dest_width],
+             dest_row,
+             (size_t)dest_width * sizeof(uint16_t));
+      dest_y++;
+    }
+  }
+}
+
+/**
   * @brief  Scale one RGB565 frame into a fixed GUI image buffer.
   * @param  source_frame Source RGB565 frame.
   * @param  dest_frame Destination RGB565 frame.
@@ -2322,6 +2368,19 @@ static void app_threadx_gui_build_scaled_frame(const uint16_t *source_frame,
     memcpy(dest_frame,
            source_frame,
            (size_t)source_width * (size_t)source_height * sizeof(uint16_t));
+    return;
+  }
+
+  if (((source_width & 3U) == 0U) &&
+      ((source_height & 3U) == 0U) &&
+      (((uint32_t)source_width * 5U) == ((uint32_t)dest_width * 4U)) &&
+      (((uint32_t)source_height * 5U) == ((uint32_t)dest_height * 4U)))
+  {
+    app_threadx_gui_expand_frame_4_to_5(source_frame,
+                                        dest_frame,
+                                        source_width,
+                                        source_height,
+                                        dest_width);
     return;
   }
 

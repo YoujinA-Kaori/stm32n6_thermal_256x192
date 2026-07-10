@@ -39,10 +39,10 @@
 #define THERMAL_GUI_PREVIEW_IMG_Y            (0)
 #define THERMAL_GUI_PREVIEW_IMG_ZOOM         (256U)
 #define THERMAL_GUI_PREVIEW_CROSS_LEN        (28)
-#define THERMAL_GUI_FULLSCREEN_PREVIEW_WIDTH (512)
-#define THERMAL_GUI_FULLSCREEN_PREVIEW_HEIGHT (384)
-#define THERMAL_GUI_FULLSCREEN_PREVIEW_X     (144)
-#define THERMAL_GUI_FULLSCREEN_PREVIEW_Y     (48)
+#define THERMAL_GUI_FULLSCREEN_PREVIEW_WIDTH (640)
+#define THERMAL_GUI_FULLSCREEN_PREVIEW_HEIGHT (480)
+#define THERMAL_GUI_FULLSCREEN_PREVIEW_X     (80)
+#define THERMAL_GUI_FULLSCREEN_PREVIEW_Y     (0)
 #define THERMAL_GUI_FULLSCREEN_PREVIEW_CROSS_LEN (40)
 #define THERMAL_GUI_FULLSCREEN_BUTTON_X      (724)
 #define THERMAL_GUI_FULLSCREEN_BUTTON_Y      (10)
@@ -765,16 +765,16 @@ void setup_scr_WidgetsDemoFullscreen(lv_ui *ui)
 
     ui->WidgetsDemo_fullscreen_preview_center_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "Center 36.8 C", lv_color_hex(THERMAL_GUI_COLOR_TEXT), 12, 148);
     lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_center_temp, 12, 12);
-    ui->WidgetsDemo_fullscreen_preview_max_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "Max 128.4 C", lv_color_hex(THERMAL_GUI_COLOR_HOT), 352, 148);
-    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_max_temp, 352, 12);
+    ui->WidgetsDemo_fullscreen_preview_max_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "Max 128.4 C", lv_color_hex(THERMAL_GUI_COLOR_HOT), 480, 148);
+    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_max_temp, 480, 12);
     ui->WidgetsDemo_fullscreen_preview_min_temp = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "Min 24.1 C", lv_color_hex(THERMAL_GUI_COLOR_COLD), 12, 148);
-    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_min_temp, 12, 340);
-    ui->WidgetsDemo_fullscreen_preview_palette_name = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "锐化", lv_color_hex(THERMAL_GUI_COLOR_ACCENT), 392, 108);
-    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_palette_name, 392, 340);
+    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_min_temp, 12, 436);
+    ui->WidgetsDemo_fullscreen_preview_palette_name = thermal_gui_create_status_badge(ui->WidgetsDemo_fullscreen_preview_frame, "锐化", lv_color_hex(THERMAL_GUI_COLOR_ACCENT), 520, 108);
+    lv_obj_set_pos(ui->WidgetsDemo_fullscreen_preview_palette_name, 520, 436);
 
-    ui->WidgetsDemo_fullscreen_preview_max_marker = thermal_gui_create_marker_label(ui->WidgetsDemo_fullscreen_preview_frame, "高", 350, 76);
+    ui->WidgetsDemo_fullscreen_preview_max_marker = thermal_gui_create_marker_label(ui->WidgetsDemo_fullscreen_preview_frame, "高", 420, 96);
 
-    ui->WidgetsDemo_fullscreen_preview_min_marker = thermal_gui_create_marker_label(ui->WidgetsDemo_fullscreen_preview_frame, "低", 64, 230);
+    ui->WidgetsDemo_fullscreen_preview_min_marker = thermal_gui_create_marker_label(ui->WidgetsDemo_fullscreen_preview_frame, "低", 80, 288);
 
     button = thermal_gui_create_footer_button(ui->WidgetsDemo_fullscreen, "设置", THERMAL_GUI_FULLSCREEN_BUTTON_X, THERMAL_GUI_FULLSCREEN_BUTTON_WIDTH, lv_color_hex(THERMAL_GUI_COLOR_COLD), true);
     lv_obj_set_pos(button, THERMAL_GUI_FULLSCREEN_BUTTON_X, THERMAL_GUI_FULLSCREEN_BUTTON_Y);
