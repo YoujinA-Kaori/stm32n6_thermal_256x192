@@ -30,10 +30,6 @@
 #define CFG_TINY1C_PREVIEW_FPS             25U
 #define CFG_TINY1C_PREVIEW_MODE_DVP        0U
 #define CFG_TINY1C_TEMP_RIGHT_SHIFT        2U
-#define CFG_TINY1C_TEMP_VALUE_MASK         0x3FFFU
-#define CFG_TINY1C_TEMP14_HIGH_GAIN_MIN    4130U
-#define CFG_TINY1C_TEMP14_HIGH_GAIN_MAX    6770U
-#define CFG_TINY1C_TEMP_UNPACK_SAMPLE_STEP 32U
 #define CFG_TINY1C_TEMP14_MAX              16383U
 #define CFG_TINY1C_TEMP_WORD_LITTLE_ENDIAN 1U
 #define CFG_TINY1C_OVERLAY_FONT_SIZE       16U
@@ -73,8 +69,6 @@ static volatile int32_t g_tiny1c_center_temp_centi_c = 0;
 static volatile uint8_t g_tiny1c_preview_mirror_enable = CFG_TINY1C_PREVIEW_MIRROR_DEFAULT_ENABLE;
 static volatile uint8_t g_tiny1c_preview_flip_enable = CFG_TINY1C_PREVIEW_FLIP_DEFAULT_ENABLE;
 static volatile uint8_t g_tiny1c_preview_contrast_slider = CFG_TINY1C_PREVIEW_CONTRAST_DEFAULT_SLIDER;
-static uint8_t g_tiny1c_temp_unpack_use_mask = 0U;
-static uint8_t g_tiny1c_temp_unpack_mode_valid = 0U;
 
 /**
  * @brief Convert one temp14 value to centi-degrees Celsius.
@@ -110,58 +104,9 @@ static void tiny1c_thermal_app_unpack_temp14_frame(const uint8_t *source_frame, 
 
     source_word_frame = (const uint16_t *)(const void *)source_frame;
     pixel_count = (uint32_t)CFG_TINY1C_FRAME_WIDTH * (uint32_t)CFG_TINY1C_FRAME_HEIGHT;
-
-    /* The documented DVP layout puts Y14 in bits [15:2]. Some 256x192
-     * firmware revisions, however, expose the 14-bit value in [13:0].
-     * Detect that variant once from the module's configured high-gain range;
-     * keep the documented right-shift path whenever the evidence is unclear. */
-    if (g_tiny1c_temp_unpack_mode_valid == 0U)
+    for (pixel_index = 0U; pixel_index < pixel_count; pixel_index++)
     {
-        uint32_t shifted_valid_count = 0U;
-        uint32_t masked_valid_count = 0U;
-        uint32_t sample_count = 0U;
-
-        for (pixel_index = 0U; pixel_index < pixel_count; pixel_index += CFG_TINY1C_TEMP_UNPACK_SAMPLE_STEP)
-        {
-            uint16_t raw_word = source_word_frame[pixel_index];
-            uint16_t shifted_value = (uint16_t)(raw_word >> CFG_TINY1C_TEMP_RIGHT_SHIFT);
-            uint16_t masked_value = (uint16_t)(raw_word & CFG_TINY1C_TEMP_VALUE_MASK);
-
-            if ((shifted_value >= CFG_TINY1C_TEMP14_HIGH_GAIN_MIN) &&
-                (shifted_value <= CFG_TINY1C_TEMP14_HIGH_GAIN_MAX))
-            {
-                shifted_valid_count++;
-            }
-            if ((masked_value >= CFG_TINY1C_TEMP14_HIGH_GAIN_MIN) &&
-                (masked_value <= CFG_TINY1C_TEMP14_HIGH_GAIN_MAX))
-            {
-                masked_valid_count++;
-            }
-            sample_count++;
-        }
-
-        if ((sample_count > 0U) &&
-            (masked_valid_count > ((sample_count * 3U) / 5U)) &&
-            (shifted_valid_count < (sample_count / 5U)))
-        {
-            g_tiny1c_temp_unpack_use_mask = 1U;
-        }
-        g_tiny1c_temp_unpack_mode_valid = 1U;
-    }
-
-    if (g_tiny1c_temp_unpack_use_mask != 0U)
-    {
-        for (pixel_index = 0U; pixel_index < pixel_count; pixel_index++)
-        {
-            dest_frame[pixel_index] = (uint16_t)(source_word_frame[pixel_index] & CFG_TINY1C_TEMP_VALUE_MASK);
-        }
-    }
-    else
-    {
-        for (pixel_index = 0U; pixel_index < pixel_count; pixel_index++)
-        {
-            dest_frame[pixel_index] = (uint16_t)(source_word_frame[pixel_index] >> CFG_TINY1C_TEMP_RIGHT_SHIFT);
-        }
+        dest_frame[pixel_index] = (uint16_t)(source_word_frame[pixel_index] >> CFG_TINY1C_TEMP_RIGHT_SHIFT);
     }
 }
 
@@ -837,7 +782,10 @@ ir_error_t tiny1c_thermal_app_start(void)
 
     HAL_Delay(20U);
 
-#if (CFG_TINY1C_OUTPUT_IMAGE_AND_TEMP_ENABLE != 1U)
+    /* preview_start() selects the frame geometry, while y16_preview_start()
+     * selects what the Y16/Y14 plane contains. This call is also required in
+     * 256x384 Image + Temperature mode; otherwise the lower half remains an
+     * image-processing plane and must not be interpreted as temperature. */
     rst = tiny1c_vdcmd_y16_temperature_start(PREVIEW_PATH0);
     if (rst != IR_SUCCESS)
     {
@@ -845,7 +793,6 @@ ir_error_t tiny1c_thermal_app_start(void)
     }
 
     HAL_Delay(20U);
-#endif
 
     if (HAL_DCMIPP_PIPE_Start(&hdcmipp, DCMIPP_PIPE0, (uint32_t)g_tiny1c_raw_frame, DCMIPP_MODE_CONTINUOUS) != HAL_OK)
     {
