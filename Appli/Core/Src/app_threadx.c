@@ -115,9 +115,12 @@ typedef struct
 #define CFG_THERMAL_AI_DIAG_STAGE_SETTLE_MS   150U
 #define CFG_THERMAL_AI_DIAG_STAGE_SETTLE_TICKS (((CFG_THERMAL_AI_DIAG_STAGE_SETTLE_MS * TX_TIMER_TICKS_PER_SECOND) + 999U) / 1000U)
 
-/* The checked-in CubeAI network is still the validated 160x120 model. Keep
- * inference disabled until a native 256x192 network and weight blob replace it. */
-#define CFG_THERMAL_AI_ENABLE                 0U
+/* Keep the existing 160x120 CubeAI network dormant until it is migrated.
+ * The active path detects hotspots from the calibrated temp14 frame. */
+#define CFG_THERMAL_AI_ENABLE                 1U
+#define CFG_THERMAL_AI_PREVIEW_HOTSPOT_ONLY   1U
+#define CFG_THERMAL_AI_TEMP14_HOTSPOT_ONLY    1U
+#define CFG_THERMAL_AI_RGB565_BOX_COMPOSITE   1U
 #define CFG_THERMAL_AI_USE_REFERENCE_INPUT    0U
 #define CFG_THERMAL_AI_SELF_TEST_ENABLE       0U
 #define CFG_UART_COMMAND_THREAD_STACK_SIZE    4096U
@@ -197,15 +200,21 @@ typedef struct
 #define CFG_THERMAL_AI_MIN_DISPLAY_BOX_PX     8U
 #define CFG_THERMAL_AI_DRAW_NORMAL_BOXES      0U
 #define CFG_THERMAL_AI_HOTSPOT_FALLBACK_ENABLE 1U
-#define CFG_THERMAL_AI_HOTSPOT_FALLBACK_DELTA_TEMP14 144U
+#define CFG_THERMAL_AI_HOTSPOT_FALLBACK_DELTA_TEMP14 120U
+#define CFG_THERMAL_AI_TOPRIGHT_HOTSPOT_DELTA_TEMP14 160U
 #define CFG_THERMAL_AI_HOTSPOT_FALLBACK_MIN_PIXELS   100U
 #define CFG_THERMAL_AI_HOTSPOT_FALLBACK_BOX_MIN_PX   38U
 #define CFG_THERMAL_AI_HOTSPOT_FALLBACK_BOX_MAX_PX   80U
-#define CFG_THERMAL_AI_HOTSPOT_FALLBACK_CONFIDENCE_MIN_PERMILLE 720U
-#define CFG_THERMAL_AI_HOTSPOT_FALLBACK_CONFIDENCE_MAX_PERMILLE 980U
+#define CFG_THERMAL_AI_HOTSPOT_FALLBACK_CONFIDENCE_MIN_PERMILLE 550U
+#define CFG_THERMAL_AI_HOTSPOT_FALLBACK_CONFIDENCE_MAX_PERMILLE 920U
 #define CFG_THERMAL_AI_PREVIEW_SCORE_BINS            256U
 #define CFG_THERMAL_AI_PREVIEW_HOT_SCORE_DELTA       112U
 #define CFG_THERMAL_AI_PREVIEW_MIN_HOT_SCORE         224U
+#define CFG_THERMAL_AI_PREVIEW_STRICT_DELTA_ADD       64U
+#define CFG_THERMAL_AI_PREVIEW_STRICT_MIN_SCORE_ADD   31U
+#define CFG_THERMAL_AI_PREVIEW_STRICT_MIN_PIXELS      300U
+#define CFG_THERMAL_AI_PREVIEW_STRICT_CONFIRM_DELTA_TEMP14 160U
+#define CFG_THERMAL_AI_PREVIEW_CONFIRM_VALID_MAX_TEMP14 16383U
 #define CFG_THERMAL_AI_PREVIEW_CONFIRM_DELTA_TEMP14  48U
 #define CFG_THERMAL_AI_TOPRIGHT_BIAS_COMP_ENABLE     1U
 #define CFG_THERMAL_AI_TOPRIGHT_BIAS_SCORE           80U
@@ -436,6 +445,8 @@ static uint8_t app_threadx_thermal_ai_preview_hotness_score(uint16_t rgb565_pixe
                                                             uint8_t pseudo_mode);
 static uint8_t app_threadx_thermal_ai_preview_hot_score_delta_for_mode(uint8_t pseudo_mode);
 static uint8_t app_threadx_thermal_ai_preview_min_hot_score_for_mode(uint8_t pseudo_mode);
+static uint32_t app_threadx_thermal_ai_preview_min_hot_pixels_for_mode(uint8_t pseudo_mode);
+static uint16_t app_threadx_thermal_ai_preview_confirm_delta_for_mode(uint8_t pseudo_mode);
 static uint8_t app_threadx_thermal_ai_percentile_from_u8_histogram(const uint16_t *histogram_ptr,
                                                                    uint32_t pixel_count,
                                                                    uint32_t rank_num,
@@ -474,6 +485,8 @@ static void app_threadx_gui_update_preview_layer(lv_obj_t *preview_img,
 static uint8_t app_threadx_thermal_ai_prepare_io(void);
 static uint8_t app_threadx_thermal_ai_run_initialized_network(void);
 static void app_threadx_thermal_ai_run_inference(const uint16_t *temp14_frame, uint32_t frame_counter);
+static void app_threadx_thermal_ai_run_preview_hotspot(const uint16_t *temp14_frame, uint32_t frame_counter);
+static uint16_t app_threadx_thermal_ai_prepare_preview_temp14(const uint16_t *temp14_frame);
 static uint8_t app_threadx_thermal_ai_load_reference_input(uint16_t *background_temp14_ptr,
                                                            uint16_t *max_temp14_ptr);
 static uint8_t app_threadx_thermal_ai_prepare_embedded_weights(void);
@@ -530,7 +543,9 @@ static uint8_t app_threadx_thermal_ai_collect_preview_hotspot_box(uint16_t backg
                                                                   uint16_t *x_min_ptr,
                                                                   uint16_t *y_min_ptr,
                                                                   uint16_t *x_max_ptr,
-                                                                  uint16_t *y_max_ptr);
+                                                                  uint16_t *y_max_ptr,
+                                                                  uint8_t *background_score_ptr,
+                                                                  uint8_t *peak_score_ptr);
 static void app_threadx_thermal_ai_append_hotspot_fallback(thermal_ai_result_t *result_ptr,
                                                            uint16_t background_temp14);
 #endif
@@ -543,8 +558,8 @@ static uint16_t app_threadx_thermal_ai_calc_hotspot_fallback_confidence(uint8_t 
                                                                         uint32_t hot_pixel_count,
                                                                         uint32_t box_width,
                                                                         uint32_t box_height,
-                                                                        uint16_t background_temp14,
-                                                                        uint16_t max_temp14);
+                                                                        uint8_t background_score,
+                                                                        uint8_t peak_score);
 static void app_threadx_dcache_clean_by_addr(void *buffer_addr, uint32_t buffer_size);
 static void app_threadx_dcache_invalidate_by_addr(void *buffer_addr, uint32_t buffer_size);
 static void app_threadx_gui_init_ai_overlays(void);
@@ -559,6 +574,11 @@ static void app_threadx_gui_update_ai_overlay_set(lv_obj_t **box_array,
                                                   uint16_t preview_height,
                                                   const thermal_ai_result_t *result_ptr,
                                                   uint8_t hide_unconfirmed_abnormal);
+static uint8_t app_threadx_thermal_ai_get_result_snapshot(thermal_ai_result_t *result_ptr);
+static void app_threadx_gui_draw_ai_boxes_rgb565(uint16_t *frame,
+                                                  uint16_t frame_width,
+                                                  uint16_t frame_height,
+                                                  const thermal_ai_result_t *result_ptr);
 static void app_threadx_gui_build_scaled_frame(const uint16_t *source_frame,
                                                uint16_t *dest_frame,
                                                uint16_t source_width,
@@ -1136,7 +1156,7 @@ static uint8_t app_threadx_thermal_ai_preview_hotness_score(uint16_t rgb565_pixe
   uint32_t rgb_max = red;
   uint32_t rgb_min = red;
   uint32_t saturation;
-  uint32_t warm_score;
+  uint32_t hot_score;
 
   if (green > rgb_max) rgb_max = green;
   if (blue > rgb_max) rgb_max = blue;
@@ -1144,12 +1164,6 @@ static uint8_t app_threadx_thermal_ai_preview_hotness_score(uint16_t rgb565_pixe
   if (blue < rgb_min) rgb_min = blue;
 
   saturation = rgb_max - rgb_min;
-  warm_score = ((red + green) > blue) ? (((red + green) - blue) >> 1) : 0U;
-  if (warm_score > 255U)
-  {
-    warm_score = 255U;
-  }
-
   switch (pseudo_mode)
   {
     case PSEUDO_COLOR_MODE_1:
@@ -1160,16 +1174,19 @@ static uint8_t app_threadx_thermal_ai_preview_hotness_score(uint16_t rgb565_pixe
 
     case PSEUDO_COLOR_MODE_3:
     case PSEUDO_COLOR_MODE_4:
-    case PSEUDO_COLOR_MODE_6:
-    case PSEUDO_COLOR_MODE_9:
-      return (uint8_t)((warm_score * 2U + luma + saturation) >> 2);
-
     case PSEUDO_COLOR_MODE_5:
+    case PSEUDO_COLOR_MODE_6:
     case PSEUDO_COLOR_MODE_7:
     case PSEUDO_COLOR_MODE_8:
+    case PSEUDO_COLOR_MODE_9:
     case PSEUDO_COLOR_MODE_10:
     default:
-      return (uint8_t)((luma * 2U + warm_score + saturation) >> 2);
+      /* Module pseudo-color palettes place their hot end at red, yellow or
+       * white. Preserve white through luma, promote red explicitly, and use
+       * saturation only as a small separation from green/cyan mid-tones. */
+      hot_score = (red > luma) ? red : luma;
+      hot_score += saturation >> 2;
+      return (uint8_t)((hot_score > 255U) ? 255U : hot_score);
   }
 }
 
@@ -1182,6 +1199,13 @@ static uint8_t app_threadx_thermal_ai_preview_hot_score_delta_for_mode(uint8_t p
 {
   switch (pseudo_mode)
   {
+    case PSEUDO_COLOR_MODE_4:  /* 铁红 */
+    case PSEUDO_COLOR_MODE_5:  /* 锐化 */
+    case PSEUDO_COLOR_MODE_9:  /* 医疗 */
+    case PSEUDO_COLOR_MODE_10: /* 测试 */
+      return (uint8_t)(CFG_THERMAL_AI_PREVIEW_HOT_SCORE_DELTA +
+                       CFG_THERMAL_AI_PREVIEW_STRICT_DELTA_ADD);
+
     case PSEUDO_COLOR_MODE_6:
     case PSEUDO_COLOR_MODE_7:
     case PSEUDO_COLOR_MODE_8:
@@ -1203,6 +1227,13 @@ static uint8_t app_threadx_thermal_ai_preview_min_hot_score_for_mode(uint8_t pse
 {
   switch (pseudo_mode)
   {
+    case PSEUDO_COLOR_MODE_4:  /* 铁红 */
+    case PSEUDO_COLOR_MODE_5:  /* 锐化 */
+    case PSEUDO_COLOR_MODE_9:  /* 医疗 */
+    case PSEUDO_COLOR_MODE_10: /* 测试 */
+      return (uint8_t)(CFG_THERMAL_AI_PREVIEW_MIN_HOT_SCORE +
+                       CFG_THERMAL_AI_PREVIEW_STRICT_MIN_SCORE_ADD);
+
     case PSEUDO_COLOR_MODE_6:
     case PSEUDO_COLOR_MODE_7:
     case PSEUDO_COLOR_MODE_8:
@@ -1212,6 +1243,46 @@ static uint8_t app_threadx_thermal_ai_preview_min_hot_score_for_mode(uint8_t pse
 
     default:
       return CFG_THERMAL_AI_PREVIEW_MIN_HOT_SCORE;
+  }
+}
+
+/**
+  * @brief  Return the minimum RGB565 hot-pixel count for one pseudo-color mode.
+  * @param  pseudo_mode Active pseudo-color mode.
+  * @retval uint32_t Minimum number of hot pixels required for one box.
+  */
+static uint32_t app_threadx_thermal_ai_preview_min_hot_pixels_for_mode(uint8_t pseudo_mode)
+{
+  switch (pseudo_mode)
+  {
+    case PSEUDO_COLOR_MODE_4:  /* 铁红 */
+    case PSEUDO_COLOR_MODE_5:  /* 锐化 */
+    case PSEUDO_COLOR_MODE_9:  /* 医疗 */
+    case PSEUDO_COLOR_MODE_10: /* 测试 */
+      return CFG_THERMAL_AI_PREVIEW_STRICT_MIN_PIXELS;
+
+    default:
+      return CFG_THERMAL_AI_HOTSPOT_FALLBACK_MIN_PIXELS;
+  }
+}
+
+/**
+  * @brief  Return the required temperature rise for RGB565 hotspot confirmation.
+  * @param  pseudo_mode Active pseudo-color mode.
+  * @retval uint16_t Required rise above frame background in kelvin*16 counts.
+  */
+static uint16_t app_threadx_thermal_ai_preview_confirm_delta_for_mode(uint8_t pseudo_mode)
+{
+  switch (pseudo_mode)
+  {
+    case PSEUDO_COLOR_MODE_4:  /* 铁红 */
+    case PSEUDO_COLOR_MODE_5:  /* 锐化 */
+    case PSEUDO_COLOR_MODE_9:  /* 医疗 */
+    case PSEUDO_COLOR_MODE_10: /* 测试 */
+      return CFG_THERMAL_AI_PREVIEW_STRICT_CONFIRM_DELTA_TEMP14;
+
+    default:
+      return 0U;
   }
 }
 
@@ -1429,7 +1500,7 @@ static void app_threadx_gui_format_ai_status_text(char *buffer, uint32_t buffer_
 {
   const char *iac_name;
   thermal_ai_result_t ai_result_snapshot;
-  uint32_t displayed_inference_ms = g_thermal_ai_last_inference_ms + 5U;
+  uint32_t displayed_inference_ms = g_thermal_ai_last_inference_ms;
   uint8_t ai_result_valid = 0U;
   uint8_t aton_irq_error_latched = 0U;
   uint16_t max_score_permille = 0U;
@@ -1467,6 +1538,40 @@ static void app_threadx_gui_format_ai_status_text(char *buffer, uint32_t buffer_
     (void)snprintf(buffer, buffer_size, "AI OFF");
     return;
   }
+
+#if (CFG_THERMAL_AI_PREVIEW_HOTSPOT_ONLY != 0U)
+  if (g_thermal_ai_model_ready == 0U)
+  {
+    (void)snprintf(buffer, buffer_size, "AI ON --");
+    return;
+  }
+
+  if (tx_mutex_get(&g_thermal_ai_mutex, TX_NO_WAIT) == TX_SUCCESS)
+  {
+    ai_result_snapshot = g_thermal_ai_runtime.last_result;
+    ai_result_valid = 1U;
+    tx_mutex_put(&g_thermal_ai_mutex);
+  }
+
+  if ((ai_result_valid != 0U) &&
+      (ai_result_snapshot.detection_count != 0U) &&
+      (ai_result_snapshot.detections[0].valid != 0U))
+  {
+    const thermal_ai_detection_t *detection_ptr = &ai_result_snapshot.detections[0];
+
+    (void)snprintf(buffer,
+                   buffer_size,
+                   "AI H%u %u %lums",
+                   (unsigned int)ai_result_snapshot.detection_count,
+                   (unsigned int)((detection_ptr->confidence_permille + 5U) / 10U),
+                   (unsigned long)displayed_inference_ms);
+  }
+  else
+  {
+    (void)snprintf(buffer, buffer_size, "AI ON -- %lums", (unsigned long)displayed_inference_ms);
+  }
+  return;
+#endif
 
   aton_irq_error_latched = g_ll_aton_rt_irq_err_latched;
 
@@ -2116,6 +2221,10 @@ static uint8_t app_threadx_gui_update_preview(lv_ui *ui)
       abnormal_detected = 1U;
     }
 
+#if (CFG_THERMAL_AI_RGB565_BOX_COMPOSITE != 0U)
+    /* Rectangles are baked into the complete image frame. No independent
+     * LVGL object is moved or invalidated in this mode. */
+#else
     app_threadx_gui_update_ai_overlay_set(g_thermal_ai_preview_boxes,
                                           g_thermal_ai_preview_labels,
                                           (int32_t)lv_obj_get_x(ui->WidgetsDemo_preview_img),
@@ -2132,6 +2241,7 @@ static uint8_t app_threadx_gui_update_preview(lv_ui *ui)
                                           CFG_GUI_FULLSCREEN_HEIGHT,
                                           ((app_thermal_ai_is_enabled() != 0U) && (ai_result_valid != 0U)) ? &ai_result_snapshot : NULL,
                                           ai_hide_unconfirmed_abnormal);
+#endif
   }
 
   return abnormal_detected;
@@ -3562,7 +3672,9 @@ static uint8_t app_threadx_thermal_ai_collect_preview_hotspot_box(uint16_t backg
                                                                   uint16_t *x_min_ptr,
                                                                   uint16_t *y_min_ptr,
                                                                   uint16_t *x_max_ptr,
-                                                                  uint16_t *y_max_ptr)
+                                                                  uint16_t *y_max_ptr,
+                                                                  uint8_t *background_score_ptr,
+                                                                  uint8_t *peak_score_ptr)
 {
   const uint16_t *preview_rgb565_frame;
   uint16_t preview_width;
@@ -3571,6 +3683,8 @@ static uint8_t app_threadx_thermal_ai_collect_preview_hotspot_box(uint16_t backg
   uint8_t pseudo_mode;
   uint8_t score_background;
   uint8_t score_threshold;
+  uint16_t score_threshold_u16;
+  uint16_t confirm_delta_temp14;
   uint32_t valid_score_count = 0U;
   uint32_t hot_pixel_count = 0U;
   uint32_t pixel_index = 0U;
@@ -3587,7 +3701,8 @@ static uint8_t app_threadx_thermal_ai_collect_preview_hotspot_box(uint16_t backg
   uint32_t x_index;
 
   if ((hot_pixel_count_ptr == NULL) || (max_x_ptr == NULL) || (max_y_ptr == NULL) ||
-      (x_min_ptr == NULL) || (y_min_ptr == NULL) || (x_max_ptr == NULL) || (y_max_ptr == NULL))
+      (x_min_ptr == NULL) || (y_min_ptr == NULL) || (x_max_ptr == NULL) || (y_max_ptr == NULL) ||
+      (background_score_ptr == NULL) || (peak_score_ptr == NULL))
   {
     return 0U;
   }
@@ -3600,10 +3715,15 @@ static uint8_t app_threadx_thermal_ai_collect_preview_hotspot_box(uint16_t backg
     return 0U;
   }
 
-  TX_PARAMETER_NOT_USED(background_temp14);
-
   (void)memset(score_histogram, 0, sizeof(score_histogram));
   pseudo_mode = app_threadx_thermal_ai_query_preview_pseudo_mode();
+  confirm_delta_temp14 = app_threadx_thermal_ai_preview_confirm_delta_for_mode(pseudo_mode);
+  if ((confirm_delta_temp14 != 0U) &&
+      ((background_temp14 < CFG_THERMAL_AI_VALID_TEMP14_MIN) ||
+       (background_temp14 > CFG_THERMAL_AI_PREVIEW_CONFIRM_VALID_MAX_TEMP14)))
+  {
+    return 0U;
+  }
 
   for (y_index = 0U; y_index < CFG_THERMAL_AI_INPUT_HEIGHT; y_index++)
   {
@@ -3638,7 +3758,9 @@ static uint8_t app_threadx_thermal_ai_collect_preview_hotspot_box(uint16_t backg
                                                                           valid_score_count,
                                                                           50U,
                                                                           100U);
-  score_threshold = (uint8_t)(score_background + app_threadx_thermal_ai_preview_hot_score_delta_for_mode(pseudo_mode));
+  score_threshold_u16 = (uint16_t)score_background +
+                        (uint16_t)app_threadx_thermal_ai_preview_hot_score_delta_for_mode(pseudo_mode);
+  score_threshold = (score_threshold_u16 > 255U) ? 255U : (uint8_t)score_threshold_u16;
   if (score_threshold < app_threadx_thermal_ai_preview_min_hot_score_for_mode(pseudo_mode))
   {
     score_threshold = app_threadx_thermal_ai_preview_min_hot_score_for_mode(pseudo_mode);
@@ -3672,10 +3794,23 @@ static uint8_t app_threadx_thermal_ai_collect_preview_hotspot_box(uint16_t backg
         continue;
       }
 
+      if (preview_score > max_preview_score)
+      {
+        max_preview_score = preview_score;
+        max_x = (uint16_t)x_index;
+        max_y = (uint16_t)y_index;
+      }
+
       temp14_valid = ((temp14_value >= CFG_THERMAL_AI_VALID_TEMP14_MIN) &&
                       (temp14_value <= CFG_THERMAL_AI_VALID_TEMP14_MAX))
                         ? 1U
                         : 0U;
+      if ((confirm_delta_temp14 != 0U) &&
+          (((uint32_t)temp14_value < ((uint32_t)background_temp14 + confirm_delta_temp14)) ||
+           (temp14_value > CFG_THERMAL_AI_PREVIEW_CONFIRM_VALID_MAX_TEMP14)))
+      {
+        continue;
+      }
       hot_pixel_count++;
       if (temp14_valid != 0U)
       {
@@ -3686,12 +3821,6 @@ static uint8_t app_threadx_thermal_ai_collect_preview_hotspot_box(uint16_t backg
           max_x = (uint16_t)x_index;
           max_y = (uint16_t)y_index;
         }
-      }
-      else if ((max_temp14_valid == 0U) && (preview_score >= max_preview_score))
-      {
-        max_preview_score = preview_score;
-        max_x = (uint16_t)x_index;
-        max_y = (uint16_t)y_index;
       }
       if (x_index < x_min)
       {
@@ -3712,7 +3841,7 @@ static uint8_t app_threadx_thermal_ai_collect_preview_hotspot_box(uint16_t backg
     }
   }
 
-  if (hot_pixel_count < CFG_THERMAL_AI_HOTSPOT_FALLBACK_MIN_PIXELS)
+  if (hot_pixel_count < app_threadx_thermal_ai_preview_min_hot_pixels_for_mode(pseudo_mode))
   {
     return 0U;
   }
@@ -3724,6 +3853,8 @@ static uint8_t app_threadx_thermal_ai_collect_preview_hotspot_box(uint16_t backg
   *y_min_ptr = y_min;
   *x_max_ptr = (uint16_t)(x_max + 1U);
   *y_max_ptr = (uint16_t)(y_max + 1U);
+  *background_score_ptr = score_background;
+  *peak_score_ptr = max_preview_score;
   return 1U;
 }
 
@@ -3749,6 +3880,8 @@ static void app_threadx_thermal_ai_append_hotspot_fallback(thermal_ai_result_t *
   uint16_t x_max = 0U;
   uint16_t y_max = 0U;
   uint16_t confidence_permille;
+  uint8_t background_score = 0U;
+  uint8_t peak_score = 0U;
   uint32_t box_width;
   uint32_t box_height;
 
@@ -3758,42 +3891,59 @@ static void app_threadx_thermal_ai_append_hotspot_fallback(thermal_ai_result_t *
     return;
   }
 
-  if (app_threadx_thermal_ai_collect_preview_hotspot_box(background_temp14,
-                                                         &hot_pixel_count,
-                                                         &max_x,
-                                                         &max_y,
-                                                         &x_min,
-                                                         &y_min,
-                                                         &x_max,
-                                                         &y_max) == 0U)
+  if ((CFG_THERMAL_AI_TEMP14_HOTSPOT_ONLY != 0U) ||
+      (app_threadx_thermal_ai_collect_preview_hotspot_box(background_temp14,
+                                                          &hot_pixel_count,
+                                                          &max_x,
+                                                          &max_y,
+                                                          &x_min,
+                                                          &y_min,
+                                                          &x_max,
+                                                          &y_max,
+                                                          &background_score,
+                                                          &peak_score) == 0U))
   {
     if ((background_temp14 < CFG_THERMAL_AI_VALID_TEMP14_MIN) ||
-        (background_temp14 > CFG_THERMAL_AI_VALID_TEMP14_MAX))
+        (background_temp14 > CFG_THERMAL_AI_PREVIEW_CONFIRM_VALID_MAX_TEMP14))
     {
       return;
     }
 
-    threshold_temp14 = (uint16_t)(background_temp14 + CFG_THERMAL_AI_HOTSPOT_FALLBACK_DELTA_TEMP14);
-    if (threshold_temp14 > CFG_THERMAL_AI_VALID_TEMP14_MAX)
+    if (((uint32_t)background_temp14 + CFG_THERMAL_AI_HOTSPOT_FALLBACK_DELTA_TEMP14) >
+        CFG_THERMAL_AI_PREVIEW_CONFIRM_VALID_MAX_TEMP14)
     {
       return;
     }
+    threshold_temp14 = (uint16_t)(background_temp14 + CFG_THERMAL_AI_HOTSPOT_FALLBACK_DELTA_TEMP14);
 
     for (pixel_index = 0U; pixel_index < CFG_THERMAL_AI_INPUT_PIXELS; pixel_index++)
     {
       uint16_t temp14_value = g_thermal_ai_oriented_temp14[pixel_index];
+      uint16_t x = (uint16_t)(pixel_index % CFG_THERMAL_AI_INPUT_WIDTH);
+      uint16_t y = (uint16_t)(pixel_index / CFG_THERMAL_AI_INPUT_WIDTH);
+      uint16_t pixel_threshold_temp14 = threshold_temp14;
 
-      if ((temp14_value < threshold_temp14) ||
+#if (CFG_THERMAL_AI_TOPRIGHT_BIAS_COMP_ENABLE != 0U)
+      if (app_threadx_thermal_ai_is_topright_bias_region(x, y) != 0U)
+      {
+        uint32_t topright_threshold_temp14 =
+            (uint32_t)background_temp14 + CFG_THERMAL_AI_TOPRIGHT_HOTSPOT_DELTA_TEMP14;
+
+        pixel_threshold_temp14 = (topright_threshold_temp14 <=
+                                  CFG_THERMAL_AI_PREVIEW_CONFIRM_VALID_MAX_TEMP14)
+                                   ? (uint16_t)topright_threshold_temp14
+                                   : CFG_THERMAL_AI_PREVIEW_CONFIRM_VALID_MAX_TEMP14;
+      }
+#endif
+
+      if ((temp14_value < pixel_threshold_temp14) ||
           (temp14_value < CFG_THERMAL_AI_VALID_TEMP14_MIN) ||
-          (temp14_value > CFG_THERMAL_AI_VALID_TEMP14_MAX))
+          (temp14_value > CFG_THERMAL_AI_PREVIEW_CONFIRM_VALID_MAX_TEMP14))
       {
         continue;
       }
 
       {
-        uint16_t x = (uint16_t)(pixel_index % CFG_THERMAL_AI_INPUT_WIDTH);
-        uint16_t y = (uint16_t)(pixel_index / CFG_THERMAL_AI_INPUT_WIDTH);
-
         hot_pixel_count++;
         if (temp14_value > max_temp14)
         {
@@ -3903,12 +4053,24 @@ static void app_threadx_thermal_ai_append_hotspot_fallback(thermal_ai_result_t *
     return;
   }
 
+  if ((preview_guided == 0U) && (max_temp14 > background_temp14))
+  {
+    uint32_t temp_delta_temp14 = (uint32_t)max_temp14 - (uint32_t)background_temp14;
+
+    /* Map a 0..20 degC rise into the same 0..255 contrast domain used by
+     * RGB hotspot confidence. Values above 20 degC saturate naturally. */
+    background_score = 0U;
+    peak_score = (temp_delta_temp14 >= 320U)
+                   ? 255U
+                   : (uint8_t)((temp_delta_temp14 * 255U) / 320U);
+  }
+
   confidence_permille = app_threadx_thermal_ai_calc_hotspot_fallback_confidence(preview_guided,
                                                                                  hot_pixel_count,
                                                                                  (uint32_t)x_max - (uint32_t)x_min,
                                                                                  (uint32_t)y_max - (uint32_t)y_min,
-                                                                                 background_temp14,
-                                                                                 max_temp14);
+                                                                                 background_score,
+                                                                                 peak_score);
 
   slot_index = result_ptr->detection_count;
   if (slot_index >= CFG_THERMAL_AI_MAX_DETECTIONS)
@@ -4142,6 +4304,11 @@ static void app_threadx_thermal_ai_run_inference(const uint16_t *temp14_frame, u
     return;
   }
 
+#if (CFG_THERMAL_AI_PREVIEW_HOTSPOT_ONLY != 0U)
+  app_threadx_thermal_ai_run_preview_hotspot(temp14_frame, frame_counter);
+  return;
+#endif
+
   g_thermal_ai_diag_run_count++;
   app_threadx_thermal_ai_set_diag_stage(1U, 1U);
 
@@ -4344,29 +4511,123 @@ static lv_color_t app_threadx_thermal_ai_color_for_class(uint8_t class_id)
 }
 
 /**
+  * @brief  Detect one abnormal hotspot directly from the current RGB565 preview.
+  * @param  frame_counter Current thermal frame counter.
+  * @retval None
+  */
+static void app_threadx_thermal_ai_run_preview_hotspot(const uint16_t *temp14_frame, uint32_t frame_counter)
+{
+  thermal_ai_result_t result;
+  uint16_t background_temp14;
+  ULONG tick_start;
+
+  (void)memset(&result, 0, sizeof(result));
+  result.frame_counter = frame_counter;
+
+  tick_start = HAL_GetTick();
+  background_temp14 = app_threadx_thermal_ai_prepare_preview_temp14(temp14_frame);
+#if (CFG_THERMAL_AI_HOTSPOT_FALLBACK_ENABLE != 0U)
+  app_threadx_thermal_ai_append_hotspot_fallback(&result, background_temp14);
+#endif
+  g_thermal_ai_last_inference_ms = HAL_GetTick() - tick_start;
+
+  g_thermal_ai_diag_run_count++;
+  g_thermal_ai_diag_stage = 0U;
+  g_thermal_ai_diag_raw_candidate_count = result.detection_count;
+  g_thermal_ai_diag_postfilter_candidate_count = result.detection_count;
+  g_thermal_ai_diag_max_score_permille =
+      (result.detection_count != 0U) ? result.detections[0].confidence_permille : 0U;
+  g_thermal_ai_diag_max_objectness_permille = g_thermal_ai_diag_max_score_permille;
+
+  if (tx_mutex_get(&g_thermal_ai_mutex, TX_WAIT_FOREVER) == TX_SUCCESS)
+  {
+    if (g_thermal_ai_runtime_enable != 0U)
+    {
+      thermal_ai_runtime_update(&g_thermal_ai_runtime, &result);
+      g_thermal_ai_model_ready = 1U;
+    }
+    else
+    {
+      thermal_ai_runtime_reset(&g_thermal_ai_runtime);
+      g_thermal_ai_model_ready = 0U;
+    }
+    tx_mutex_put(&g_thermal_ai_mutex);
+  }
+}
+
+/**
+  * @brief  Build the preview-oriented calibrated temp14 frame used for hotspot detection.
+  * @param  temp14_frame Latest calibrated sensor-temperature frame.
+  * @retval uint16_t Median valid frame temperature in kelvin*16, or zero.
+  */
+static uint16_t app_threadx_thermal_ai_prepare_preview_temp14(const uint16_t *temp14_frame)
+{
+  uint32_t pixel_index = 0U;
+  uint32_t valid_pixel_count = 0U;
+  uint32_t y;
+  uint32_t x;
+
+  if (temp14_frame == NULL)
+  {
+    return 0U;
+  }
+
+  (void)memset(g_thermal_ai_histogram, 0, sizeof(g_thermal_ai_histogram));
+  for (y = 0U; y < CFG_THERMAL_AI_INPUT_HEIGHT; y++)
+  {
+    for (x = 0U; x < CFG_THERMAL_AI_INPUT_WIDTH; x++, pixel_index++)
+    {
+      uint16_t temp14_value = app_threadx_temp14_get_preview_oriented_sample(
+          temp14_frame,
+          CFG_THERMAL_AI_INPUT_WIDTH,
+          CFG_THERMAL_AI_INPUT_HEIGHT,
+          (uint16_t)x,
+          (uint16_t)y);
+
+      g_thermal_ai_oriented_temp14[pixel_index] = temp14_value;
+      if ((temp14_value >= CFG_THERMAL_AI_VALID_TEMP14_MIN) &&
+          (temp14_value <= CFG_THERMAL_AI_PREVIEW_CONFIRM_VALID_MAX_TEMP14))
+      {
+        g_thermal_ai_histogram[temp14_value]++;
+        valid_pixel_count++;
+      }
+    }
+  }
+
+  if (valid_pixel_count == 0U)
+  {
+    return 0U;
+  }
+
+  return app_threadx_thermal_ai_percentile_from_histogram(valid_pixel_count);
+}
+
+/**
   * @brief  Convert one hotspot-fallback candidate into a bounded confidence value.
   * @param  preview_guided Non-zero when the preview-image path found the hotspot.
   * @param  hot_pixel_count Count of pixels inside the hotspot candidate.
   * @param  box_width Bounding-box width in model-input pixels.
   * @param  box_height Bounding-box height in model-input pixels.
-  * @param  background_temp14 Background temperature in kelvin*16.
-  * @param  max_temp14 Maximum hotspot temperature in kelvin*16.
+  * @param  background_score Median RGB565 hotness score.
+  * @param  peak_score Peak RGB565 hotness score inside the candidate.
   * @retval uint16_t Confidence in permille for display/runtime overlay.
   */
 static uint16_t app_threadx_thermal_ai_calc_hotspot_fallback_confidence(uint8_t preview_guided,
                                                                         uint32_t hot_pixel_count,
                                                                         uint32_t box_width,
                                                                         uint32_t box_height,
-                                                                        uint16_t background_temp14,
-                                                                        uint16_t max_temp14)
+                                                                        uint8_t background_score,
+                                                                        uint8_t peak_score)
 {
   uint32_t box_area;
   uint32_t fill_permille;
-  uint32_t temp_delta_temp14 = 0U;
-  uint32_t temp_term;
+  uint32_t contrast_score = 0U;
+  uint32_t contrast_term;
   uint32_t area_term;
   uint32_t fill_term;
   uint32_t confidence_permille;
+
+  TX_PARAMETER_NOT_USED(preview_guided);
 
   box_area = box_width * box_height;
   if (box_area == 0U)
@@ -4376,25 +4637,27 @@ static uint16_t app_threadx_thermal_ai_calc_hotspot_fallback_confidence(uint8_t 
 
   fill_permille = (hot_pixel_count >= box_area) ? 1000U : ((hot_pixel_count * 1000U) / box_area);
 
-  if ((max_temp14 > background_temp14) &&
-      (background_temp14 >= CFG_THERMAL_AI_VALID_TEMP14_MIN) &&
-      (max_temp14 <= CFG_THERMAL_AI_VALID_TEMP14_MAX))
+  if (peak_score > background_score)
   {
-    temp_delta_temp14 = (uint32_t)max_temp14 - (uint32_t)background_temp14;
+    contrast_score = (uint32_t)peak_score - (uint32_t)background_score;
   }
-  if (temp_delta_temp14 > 160U)
+  if (contrast_score > 180U)
   {
-    temp_delta_temp14 = 160U;
+    contrast_score = 180U;
   }
 
-  fill_term = fill_permille / 4U;
-  area_term = (hot_pixel_count > 80U) ? 80U : hot_pixel_count;
-  temp_term = (temp_delta_temp14 * 140U) / 160U;
+  contrast_term = contrast_score * 2U;
+  fill_term = fill_permille / 8U;
+  area_term = hot_pixel_count / 32U;
+  if (area_term > 50U)
+  {
+    area_term = 50U;
+  }
 
-  confidence_permille = (preview_guided != 0U) ? 760U : 700U;
+  confidence_permille = 400U;
+  confidence_permille += contrast_term;
   confidence_permille += fill_term;
   confidence_permille += area_term;
-  confidence_permille += temp_term;
 
   if (confidence_permille < CFG_THERMAL_AI_HOTSPOT_FALLBACK_CONFIDENCE_MIN_PERMILLE)
   {
@@ -4412,7 +4675,7 @@ static uint16_t app_threadx_thermal_ai_calc_hotspot_fallback_confidence(uint8_t 
   * @brief  Create runtime AI overlay rectangles on both preview images.
   * @retval None
   */
-static void app_threadx_gui_init_ai_overlays(void)
+static void __attribute__((unused)) app_threadx_gui_init_ai_overlays(void)
 {
   if (g_thermal_ai_overlay_ready != 0U)
   {
@@ -4479,7 +4742,7 @@ static void app_threadx_gui_init_ai_overlay_set(lv_obj_t *parent_obj,
   * @param  result_ptr Latest decoded AI result, may be NULL.
   * @retval None
   */
-static void app_threadx_gui_update_ai_overlay_set(lv_obj_t **box_array,
+static void __attribute__((unused)) app_threadx_gui_update_ai_overlay_set(lv_obj_t **box_array,
                                                   lv_obj_t **label_array,
                                                   int32_t origin_x,
                                                   int32_t origin_y,
@@ -4604,11 +4867,124 @@ static void app_threadx_gui_update_ai_overlay_set(lv_obj_t **box_array,
       lv_obj_move_foreground(box);
       (void)snprintf(label_text,
                      sizeof(label_text),
-                     "%s %u%%",
-                     thermal_ai_runtime_get_class_name(detection_ptr->class_id),
+                     "HOT %u%%",
                      (unsigned int)((detection_ptr->confidence_permille + 5U) / 10U));
       lv_label_set_text(label, label_text);
       lv_obj_set_style_border_color(label, border_color, 0);
+    }
+  }
+}
+
+/**
+  * @brief  Copy the latest enabled hotspot result for GUI-frame composition.
+  * @param  result_ptr Output result snapshot.
+  * @retval uint8_t 1 when a valid runtime result was copied, otherwise 0.
+  */
+static uint8_t app_threadx_thermal_ai_get_result_snapshot(thermal_ai_result_t *result_ptr)
+{
+  uint8_t result_valid = 0U;
+
+  if ((result_ptr == NULL) ||
+      (app_thermal_ai_is_enabled() == 0U) ||
+      (g_thermal_ai_model_ready == 0U))
+  {
+    return 0U;
+  }
+
+  if (tx_mutex_get(&g_thermal_ai_mutex, TX_NO_WAIT) == TX_SUCCESS)
+  {
+    if ((g_thermal_ai_runtime_enable != 0U) && (g_thermal_ai_model_ready != 0U))
+    {
+      *result_ptr = g_thermal_ai_runtime.last_result;
+      result_valid = 1U;
+    }
+    tx_mutex_put(&g_thermal_ai_mutex);
+  }
+
+  return result_valid;
+}
+
+/**
+  * @brief  Composite abnormal-hotspot rectangles into one complete RGB565 frame.
+  * @param  frame Destination RGB565 frame.
+  * @param  frame_width Destination width in pixels.
+  * @param  frame_height Destination height in pixels.
+  * @param  result_ptr Latest hotspot result.
+  * @retval None
+  */
+static void app_threadx_gui_draw_ai_boxes_rgb565(uint16_t *frame,
+                                                  uint16_t frame_width,
+                                                  uint16_t frame_height,
+                                                  const thermal_ai_result_t *result_ptr)
+{
+  uint32_t detection_index;
+  uint16_t border_thickness;
+
+  if ((frame == NULL) || (frame_width == 0U) || (frame_height == 0U) || (result_ptr == NULL))
+  {
+    return;
+  }
+
+  border_thickness = (frame_width >= CFG_GUI_FULLSCREEN_WIDTH) ? 4U : 3U;
+  for (detection_index = 0U; detection_index < result_ptr->detection_count; detection_index++)
+  {
+    const thermal_ai_detection_t *detection_ptr = &result_ptr->detections[detection_index];
+    thermal_ai_bbox_t scaled_bbox;
+    uint16_t x_min;
+    uint16_t y_min;
+    uint16_t x_max;
+    uint16_t y_max;
+    uint16_t thickness_index;
+    uint16_t x;
+    uint16_t y;
+    const uint16_t border_color = 0xFFE0U;
+
+    if ((detection_ptr->valid == 0U) ||
+        (detection_ptr->class_id != (uint8_t)THERMAL_AI_CLASS_CIRCUIT_BOARD_ABNORMAL_HOTSPOT))
+    {
+      continue;
+    }
+
+    thermal_ai_runtime_scale_bbox(&detection_ptr->bbox,
+                                  CFG_THERMAL_AI_INPUT_WIDTH,
+                                  CFG_THERMAL_AI_INPUT_HEIGHT,
+                                  frame_width,
+                                  frame_height,
+                                  &scaled_bbox);
+    x_min = scaled_bbox.x_min;
+    y_min = scaled_bbox.y_min;
+    x_max = scaled_bbox.x_max;
+    y_max = scaled_bbox.y_max;
+
+    if ((x_max <= x_min) || (y_max <= y_min))
+    {
+      continue;
+    }
+
+    for (thickness_index = 0U; thickness_index < border_thickness; thickness_index++)
+    {
+      uint16_t top = (uint16_t)(y_min + thickness_index);
+      uint16_t bottom = (y_max > thickness_index) ? (uint16_t)(y_max - thickness_index) : y_max;
+      uint16_t left = (uint16_t)(x_min + thickness_index);
+      uint16_t right = (x_max > thickness_index) ? (uint16_t)(x_max - thickness_index) : x_max;
+
+      if ((top >= frame_height) || (bottom >= frame_height) ||
+          (left >= frame_width) || (right >= frame_width) ||
+          (right <= left) || (bottom <= top))
+      {
+        break;
+      }
+
+      for (x = left; x <= right; x++)
+      {
+        frame[(uint32_t)top * frame_width + x] = border_color;
+        frame[(uint32_t)bottom * frame_width + x] = border_color;
+      }
+      for (y = top; y <= bottom; y++)
+      {
+        frame[(uint32_t)y * frame_width + left] = border_color;
+        frame[(uint32_t)y * frame_width + right] = border_color;
+      }
     }
   }
 }
@@ -4672,9 +5048,11 @@ static VOID app_threadx_thermal_thread_entry(ULONG thread_input)
 static VOID app_threadx_extrema_query_thread_entry(ULONG thread_input)
 {
   MaxMinTempInfo_t max_min_temp_info;
+  uint16_t raw_hot_temp14;
+  uint16_t raw_cold_temp14;
   uint16_t max_temp14;
   uint16_t min_temp14;
-  uint16_t center_temp14;
+  uint16_t raw_center_temp14;
   IrPoint_t center_point;
 
   TX_PARAMETER_NOT_USED(thread_input);
@@ -4685,24 +5063,31 @@ static VOID app_threadx_extrema_query_thread_entry(ULONG thread_input)
     {
       if (tiny1c_vdcmd_get_frame_max_min_temp(&max_min_temp_info) == IR_SUCCESS)
       {
-        max_temp14 = max_min_temp_info.max_temp;
-        min_temp14 = max_min_temp_info.min_temp;
-        (void)tiny1c_vdcmd_get_point_temp(max_min_temp_info.max_temp_point, &max_temp14);
-        (void)tiny1c_vdcmd_get_point_temp(max_min_temp_info.min_temp_point, &min_temp14);
+        /* This 256x192 module's raw response is inverse: the smallest raw
+         * value is the hottest point. Swap the extrema roles after applying
+         * the active gain calibration. */
+        raw_hot_temp14 = max_min_temp_info.min_temp;
+        raw_cold_temp14 = max_min_temp_info.max_temp;
+        (void)tiny1c_vdcmd_get_point_temp(max_min_temp_info.min_temp_point, &raw_hot_temp14);
+        (void)tiny1c_vdcmd_get_point_temp(max_min_temp_info.max_temp_point, &raw_cold_temp14);
+        max_temp14 = tiny1c_thermal_app_calibrate_temp14(raw_hot_temp14);
+        min_temp14 = tiny1c_thermal_app_calibrate_temp14(raw_cold_temp14);
         g_extrema_cache_max_temp14 = max_temp14;
         g_extrema_cache_min_temp14 = min_temp14;
-        g_extrema_cache_max_temp_x = max_min_temp_info.max_temp_point.x;
-        g_extrema_cache_max_temp_y = max_min_temp_info.max_temp_point.y;
-        g_extrema_cache_min_temp_x = max_min_temp_info.min_temp_point.x;
-        g_extrema_cache_min_temp_y = max_min_temp_info.min_temp_point.y;
+        g_extrema_cache_max_temp_x = max_min_temp_info.min_temp_point.x;
+        g_extrema_cache_max_temp_y = max_min_temp_info.min_temp_point.y;
+        g_extrema_cache_min_temp_x = max_min_temp_info.max_temp_point.x;
+        g_extrema_cache_min_temp_y = max_min_temp_info.max_temp_point.y;
         g_extrema_cache_valid = 1U;
       }
 
       center_point = app_threadx_build_center_point(tiny1c_thermal_app_get_frame_width(),
                                                     tiny1c_thermal_app_get_frame_height());
-      if (tiny1c_vdcmd_get_point_temp(center_point, &center_temp14) == IR_SUCCESS)
+      if (tiny1c_vdcmd_get_point_temp(center_point, &raw_center_temp14) == IR_SUCCESS)
       {
-        tiny1c_thermal_app_set_center_temp_centi_c(app_threadx_temp14_to_compensated_centi_celsius(center_temp14));
+        tiny1c_thermal_app_set_center_temp_centi_c(
+            app_threadx_temp14_to_compensated_centi_celsius(
+                tiny1c_thermal_app_calibrate_temp14(raw_center_temp14)));
       }
     }
 
@@ -4811,15 +5196,18 @@ static VOID app_threadx_gui_thread_entry(ULONG thread_input)
   g_gui_fullscreen_img_dsc.data_size = CFG_GUI_FULLSCREEN_WIDTH * CFG_GUI_FULLSCREEN_HEIGHT * sizeof(uint16_t);
   g_gui_fullscreen_img_dsc.data = (const uint8_t *)g_gui_fullscreen_rgb565_frame;
   lv_img_set_src(guider_ui.WidgetsDemo_fullscreen_preview_img, &g_gui_fullscreen_img_dsc);
+#if (CFG_THERMAL_AI_RGB565_BOX_COMPOSITE == 0U)
   if (CFG_THERMAL_AI_ENABLE != 0U)
   {
     app_threadx_gui_init_ai_overlays();
   }
+#endif
 
   for (;;)
   {
     uint32_t frame_counter_now;
     uint32_t now_ms;
+    thermal_ai_result_t ai_draw_result;
     char time_text[16];
     char battery_text[16];
     char ai_text[24];
@@ -4829,10 +5217,21 @@ static VOID app_threadx_gui_thread_entry(ULONG thread_input)
     frame_counter_now = tiny1c_thermal_app_get_frame_counter();
     if ((frame_counter_now != 0U) && (frame_counter_now != frame_counter_last))
     {
+      uint8_t ai_draw_result_valid = app_threadx_thermal_ai_get_result_snapshot(&ai_draw_result);
+
       frame_counter_last = frame_counter_now;
       if (thermal_gui_is_fullscreen_active() != 0U)
       {
         app_threadx_gui_update_fullscreen_image();
+#if (CFG_THERMAL_AI_RGB565_BOX_COMPOSITE != 0U)
+        if (ai_draw_result_valid != 0U)
+        {
+          app_threadx_gui_draw_ai_boxes_rgb565(g_gui_fullscreen_rgb565_frame,
+                                                CFG_GUI_FULLSCREEN_WIDTH,
+                                                CFG_GUI_FULLSCREEN_HEIGHT,
+                                                &ai_draw_result);
+        }
+#endif
         lv_obj_invalidate(guider_ui.WidgetsDemo_fullscreen_preview_img);
       }
       else
@@ -4843,6 +5242,15 @@ static VOID app_threadx_gui_thread_entry(ULONG thread_input)
                                           tiny1c_thermal_app_get_preview_height(),
                                           CFG_GUI_PREVIEW_WIDTH,
                                           CFG_GUI_PREVIEW_HEIGHT);
+#if (CFG_THERMAL_AI_RGB565_BOX_COMPOSITE != 0U)
+        if (ai_draw_result_valid != 0U)
+        {
+          app_threadx_gui_draw_ai_boxes_rgb565(g_gui_preview_rgb565_frame,
+                                                CFG_GUI_PREVIEW_WIDTH,
+                                                CFG_GUI_PREVIEW_HEIGHT,
+                                                &ai_draw_result);
+        }
+#endif
         lv_obj_invalidate(guider_ui.WidgetsDemo_preview_img);
       }
     }
@@ -5327,6 +5735,7 @@ static VOID app_threadx_uart_stream_thread_entry(ULONG thread_input)
     uint32_t frame_counter_now;
     const uint16_t *temp14_frame;
     uint16_t center_temp14;
+    uint16_t raw_center_temp14;
     int32_t center_temp_centi_c;
     float corrected_center_temp_c;
     uint32_t tx_bytes;
@@ -5367,7 +5776,10 @@ static VOID app_threadx_uart_stream_thread_entry(ULONG thread_input)
     center_temp14 = temp14_frame[((CFG_UART_STREAM_SOURCE_HEIGHT / 2U) * CFG_UART_STREAM_SOURCE_WIDTH) +
                                  (CFG_UART_STREAM_SOURCE_WIDTH / 2U)];
     center_point = app_threadx_build_center_point(CFG_UART_STREAM_SOURCE_WIDTH, CFG_UART_STREAM_SOURCE_HEIGHT);
-    (void)tiny1c_vdcmd_get_point_temp(center_point, &center_temp14);
+    if (tiny1c_vdcmd_get_point_temp(center_point, &raw_center_temp14) == IR_SUCCESS)
+    {
+      center_temp14 = tiny1c_thermal_app_calibrate_temp14(raw_center_temp14);
+    }
     center_temp_centi_c = app_threadx_temp14_to_centi_celsius(center_temp14);
     corrected_center_temp_c = (float)center_temp_centi_c / 100.0f;
 

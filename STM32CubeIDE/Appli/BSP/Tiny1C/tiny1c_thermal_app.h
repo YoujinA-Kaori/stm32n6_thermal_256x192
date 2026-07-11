@@ -39,6 +39,20 @@ void tiny1c_thermal_app_on_frame_event(DCMIPP_HandleTypeDef *dcmipp_handle, uint
 const uint16_t *tiny1c_thermal_app_get_temp14_frame(void);
 
 /**
+ * @brief Convert one inverse raw module value to calibrated Kelvin x 16.
+ * @param raw_temp14 Uncorrected module value after Y14 unpacking.
+ * @return uint16_t Calibrated Kelvin x 16 value for the active gain.
+ */
+uint16_t tiny1c_thermal_app_calibrate_temp14(uint16_t raw_temp14);
+
+/**
+ * @brief Select the calibration curve matching the module gain mode.
+ * @param gain_high Non-zero for high gain, zero for low gain.
+ * @return None
+ */
+void tiny1c_thermal_app_set_gain_high(uint8_t gain_high);
+
+/**
  * @brief Get the temperature frame width.
  * @param None
  * @return uint16_t Frame width in pixels.

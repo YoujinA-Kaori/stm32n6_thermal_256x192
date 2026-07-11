@@ -713,7 +713,10 @@ ir_error_t tpd_get_max_min_temp_info(MaxMinTempInfo_t* max_min_temp_info)
 ir_error_t tpd_get_point_temp_info(IrPoint_t point_pos, uint16_t* point_temp_value)
 {
     ir_error_t rst;
-    uint8_t data[2] = { 0 };
+    /* The Tiny1-C point-temperature transaction returns a 12-byte long-command
+     * response. Only the first two bytes contain the requested temperature,
+     * but the complete response must still be consumed. */
+    uint8_t data[12] = { 0 };
     uint16_t wParam = 0;
     uint32_t dwAddr1 = 0;
     uint32_t dwAddr2 = 0;
@@ -722,7 +725,10 @@ ir_error_t tpd_get_point_temp_info(IrPoint_t point_pos, uint16_t* point_temp_val
     ptVdCmdHeader.bySubCmd = SUBCMD_TPD_GET_POINT_TEMP;
     dwAddr1 = (((uint32_t)point_pos.x) << 16) | point_pos.y;
     rst = long_cmd_read(&ptVdCmdHeader, wParam, dwAddr1, dwAddr2, sizeof(data), data);
-    *point_temp_value = ((uint16_t)data[0] << 8) + data[1];
+    if (rst == IR_SUCCESS)
+    {
+        *point_temp_value = ((uint16_t)data[0] << 8) + data[1];
+    }
     return rst;
 }
 

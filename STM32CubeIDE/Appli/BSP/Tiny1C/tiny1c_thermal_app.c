@@ -30,10 +30,6 @@
 #define CFG_TINY1C_PREVIEW_FPS             25U
 #define CFG_TINY1C_PREVIEW_MODE_DVP        0U
 #define CFG_TINY1C_TEMP_RIGHT_SHIFT        2U
-#define CFG_TINY1C_TEMP_VALUE_MASK         0x3FFFU
-#define CFG_TINY1C_TEMP14_HIGH_GAIN_MIN    4130U
-#define CFG_TINY1C_TEMP14_HIGH_GAIN_MAX    6770U
-#define CFG_TINY1C_TEMP_UNPACK_SAMPLE_STEP 32U
 #define CFG_TINY1C_TEMP14_MAX              16383U
 #define CFG_TINY1C_TEMP_WORD_LITTLE_ENDIAN 1U
 #define CFG_TINY1C_OVERLAY_FONT_SIZE       16U
@@ -54,6 +50,15 @@
 #define CFG_TINY1C_AUTO_SHUTTER_MAX_S      180U
 #define CFG_TINY1C_AUTO_SHUTTER_THRESH_CNT 72U
 #define CFG_TINY1C_DEFAULT_PSEUDO_COLOR_MODE PSEUDO_COLOR_MODE_5
+#define CFG_TINY1C_APPLY_STARTUP_TPD_DEFAULTS 0U
+#define CFG_TINY1C_CAL_HIGH_COLD_RAW           12909U
+#define CFG_TINY1C_CAL_HIGH_COLD_TEMP14        4778U
+#define CFG_TINY1C_CAL_HIGH_WARM_RAW           12738U
+#define CFG_TINY1C_CAL_HIGH_WARM_TEMP14        5026U
+#define CFG_TINY1C_CAL_LOW_WARM_RAW            12085U
+#define CFG_TINY1C_CAL_LOW_WARM_TEMP14         5026U
+#define CFG_TINY1C_CAL_LOW_HOT_RAW             10603U
+#define CFG_TINY1C_CAL_LOW_HOT_TEMP14          10130U
 #define CFG_TINY1C_PREVIEW_CONTRAST_DEFAULT_SLIDER 54U
 #define CFG_TINY1C_PREVIEW_MIRROR_DEFAULT_ENABLE  1U
 #define CFG_TINY1C_PREVIEW_FLIP_DEFAULT_ENABLE    1U
@@ -73,8 +78,87 @@ static volatile int32_t g_tiny1c_center_temp_centi_c = 0;
 static volatile uint8_t g_tiny1c_preview_mirror_enable = CFG_TINY1C_PREVIEW_MIRROR_DEFAULT_ENABLE;
 static volatile uint8_t g_tiny1c_preview_flip_enable = CFG_TINY1C_PREVIEW_FLIP_DEFAULT_ENABLE;
 static volatile uint8_t g_tiny1c_preview_contrast_slider = CFG_TINY1C_PREVIEW_CONTRAST_DEFAULT_SLIDER;
-static uint8_t g_tiny1c_temp_unpack_use_mask = 0U;
-static uint8_t g_tiny1c_temp_unpack_mode_valid = 0U;
+static volatile uint8_t g_tiny1c_gain_high = CFG_TINY1C_DEFAULT_HIGH_GAIN;
+static uint16_t g_tiny1c_calibration_high_lut[CFG_TINY1C_TEMP14_MAX + 1U]
+__attribute__((section(".EXTRAM"), aligned(32)));
+static uint16_t g_tiny1c_calibration_low_lut[CFG_TINY1C_TEMP14_MAX + 1U]
+__attribute__((section(".EXTRAM"), aligned(32)));
+
+/**
+ * @brief Map the new module's inverse raw response to Kelvin x 16.
+ * @param raw_temp14 Uncorrected 14-bit value returned by the module.
+ * @param raw_cold Raw value at the colder calibration point.
+ * @param temp_cold_temp14 Kelvin x 16 value at the colder point.
+ * @param raw_hot Raw value at the hotter calibration point.
+ * @param temp_hot_temp14 Kelvin x 16 value at the hotter point.
+ * @return uint16_t Calibrated Kelvin x 16 value.
+ */
+static uint16_t tiny1c_thermal_app_interpolate_temp14(uint16_t raw_temp14,
+                                                       uint16_t raw_cold,
+                                                       uint16_t temp_cold_temp14,
+                                                       uint16_t raw_hot,
+                                                       uint16_t temp_hot_temp14)
+{
+    int32_t raw_span;
+    int32_t temp_span;
+    int32_t numerator;
+    int32_t calibrated_temp14;
+
+    raw_span = (int32_t)raw_cold - (int32_t)raw_hot;
+    temp_span = (int32_t)temp_hot_temp14 - (int32_t)temp_cold_temp14;
+    if (raw_span <= 0)
+    {
+        return raw_temp14;
+    }
+
+    numerator = ((int32_t)raw_cold - (int32_t)raw_temp14) * temp_span;
+    if (numerator >= 0)
+    {
+        numerator += raw_span / 2;
+    }
+    else
+    {
+        numerator -= raw_span / 2;
+    }
+
+    calibrated_temp14 = (int32_t)temp_cold_temp14 + (numerator / raw_span);
+    if (calibrated_temp14 < 0)
+    {
+        calibrated_temp14 = 0;
+    }
+    else if (calibrated_temp14 > (int32_t)CFG_TINY1C_TEMP14_MAX)
+    {
+        calibrated_temp14 = (int32_t)CFG_TINY1C_TEMP14_MAX;
+    }
+
+    return (uint16_t)calibrated_temp14;
+}
+
+/**
+ * @brief Build high-gain and low-gain conversion LUTs from field anchors.
+ * @param None
+ * @return None
+ */
+static void tiny1c_thermal_app_build_calibration_luts(void)
+{
+    uint32_t raw_temp14;
+
+    for (raw_temp14 = 0U; raw_temp14 <= CFG_TINY1C_TEMP14_MAX; raw_temp14++)
+    {
+        g_tiny1c_calibration_high_lut[raw_temp14] =
+            tiny1c_thermal_app_interpolate_temp14((uint16_t)raw_temp14,
+                                                   CFG_TINY1C_CAL_HIGH_COLD_RAW,
+                                                   CFG_TINY1C_CAL_HIGH_COLD_TEMP14,
+                                                   CFG_TINY1C_CAL_HIGH_WARM_RAW,
+                                                   CFG_TINY1C_CAL_HIGH_WARM_TEMP14);
+        g_tiny1c_calibration_low_lut[raw_temp14] =
+            tiny1c_thermal_app_interpolate_temp14((uint16_t)raw_temp14,
+                                                   CFG_TINY1C_CAL_LOW_WARM_RAW,
+                                                   CFG_TINY1C_CAL_LOW_WARM_TEMP14,
+                                                   CFG_TINY1C_CAL_LOW_HOT_RAW,
+                                                   CFG_TINY1C_CAL_LOW_HOT_TEMP14);
+    }
+}
 
 /**
  * @brief Convert one temp14 value to centi-degrees Celsius.
@@ -100,6 +184,7 @@ static int32_t tiny1c_thermal_app_temp14_to_centi_celsius(uint16_t temp14_value)
 static void tiny1c_thermal_app_unpack_temp14_frame(const uint8_t *source_frame, uint16_t *dest_frame)
 {
     const uint16_t *source_word_frame;
+    const uint16_t *calibration_lut;
     uint32_t pixel_index;
     uint32_t pixel_count;
 
@@ -109,59 +194,15 @@ static void tiny1c_thermal_app_unpack_temp14_frame(const uint8_t *source_frame, 
     }
 
     source_word_frame = (const uint16_t *)(const void *)source_frame;
+    calibration_lut = (g_tiny1c_gain_high != 0U) ?
+                      g_tiny1c_calibration_high_lut : g_tiny1c_calibration_low_lut;
     pixel_count = (uint32_t)CFG_TINY1C_FRAME_WIDTH * (uint32_t)CFG_TINY1C_FRAME_HEIGHT;
 
-    /* The documented DVP layout puts Y14 in bits [15:2]. Some 256x192
-     * firmware revisions, however, expose the 14-bit value in [13:0].
-     * Detect that variant once from the module's configured high-gain range;
-     * keep the documented right-shift path whenever the evidence is unclear. */
-    if (g_tiny1c_temp_unpack_mode_valid == 0U)
+    for (pixel_index = 0U; pixel_index < pixel_count; pixel_index++)
     {
-        uint32_t shifted_valid_count = 0U;
-        uint32_t masked_valid_count = 0U;
-        uint32_t sample_count = 0U;
+        uint16_t raw_temp14 = (uint16_t)(source_word_frame[pixel_index] >> CFG_TINY1C_TEMP_RIGHT_SHIFT);
 
-        for (pixel_index = 0U; pixel_index < pixel_count; pixel_index += CFG_TINY1C_TEMP_UNPACK_SAMPLE_STEP)
-        {
-            uint16_t raw_word = source_word_frame[pixel_index];
-            uint16_t shifted_value = (uint16_t)(raw_word >> CFG_TINY1C_TEMP_RIGHT_SHIFT);
-            uint16_t masked_value = (uint16_t)(raw_word & CFG_TINY1C_TEMP_VALUE_MASK);
-
-            if ((shifted_value >= CFG_TINY1C_TEMP14_HIGH_GAIN_MIN) &&
-                (shifted_value <= CFG_TINY1C_TEMP14_HIGH_GAIN_MAX))
-            {
-                shifted_valid_count++;
-            }
-            if ((masked_value >= CFG_TINY1C_TEMP14_HIGH_GAIN_MIN) &&
-                (masked_value <= CFG_TINY1C_TEMP14_HIGH_GAIN_MAX))
-            {
-                masked_valid_count++;
-            }
-            sample_count++;
-        }
-
-        if ((sample_count > 0U) &&
-            (masked_valid_count > ((sample_count * 3U) / 5U)) &&
-            (shifted_valid_count < (sample_count / 5U)))
-        {
-            g_tiny1c_temp_unpack_use_mask = 1U;
-        }
-        g_tiny1c_temp_unpack_mode_valid = 1U;
-    }
-
-    if (g_tiny1c_temp_unpack_use_mask != 0U)
-    {
-        for (pixel_index = 0U; pixel_index < pixel_count; pixel_index++)
-        {
-            dest_frame[pixel_index] = (uint16_t)(source_word_frame[pixel_index] & CFG_TINY1C_TEMP_VALUE_MASK);
-        }
-    }
-    else
-    {
-        for (pixel_index = 0U; pixel_index < pixel_count; pixel_index++)
-        {
-            dest_frame[pixel_index] = (uint16_t)(source_word_frame[pixel_index] >> CFG_TINY1C_TEMP_RIGHT_SHIFT);
-        }
+        dest_frame[pixel_index] = calibration_lut[raw_temp14];
     }
 }
 
@@ -310,6 +351,7 @@ static void __attribute__((unused)) tiny1c_thermal_app_center_span_to_range(uint
  * @param distance_cm Distance in centimeters.
  * @return uint16_t Distance parameter for TPD_PROP_DISTANCE.
  */
+#if (CFG_TINY1C_APPLY_STARTUP_TPD_DEFAULTS == 1U)
 static uint16_t tiny1c_thermal_app_distance_cm_to_cnt_128(uint16_t distance_cm)
 {
     uint32_t distance_cnt = (((uint32_t)distance_cm * 128U) + 50U) / 100U;
@@ -416,6 +458,7 @@ static ir_error_t tiny1c_thermal_app_config_module_defaults(void)
 
     return IR_SUCCESS;
 }
+#endif
 
 /**
  * @brief Clean one LCD framebuffer rectangle from D-Cache after CPU drawing.
@@ -804,11 +847,22 @@ ir_error_t tiny1c_thermal_app_start(void)
         return rst;
     }
 
+    tiny1c_thermal_app_build_calibration_luts();
+
+#if (CFG_TINY1C_APPLY_STARTUP_TPD_DEFAULTS == 1U)
     rst = tiny1c_thermal_app_config_module_defaults();
     if (rst != IR_SUCCESS)
     {
         return rst;
     }
+#endif
+
+    rst = tiny1c_vdcmd_set_gain_mode(CFG_TINY1C_DEFAULT_HIGH_GAIN);
+    if (rst != IR_SUCCESS)
+    {
+        return rst;
+    }
+    g_tiny1c_gain_high = CFG_TINY1C_DEFAULT_HIGH_GAIN;
 
     rst = tiny1c_vdcmd_set_pseudo_color(PREVIEW_PATH0, CFG_TINY1C_DEFAULT_PSEUDO_COLOR_MODE);
     if (rst != IR_SUCCESS)
@@ -923,6 +977,33 @@ int32_t tiny1c_thermal_app_get_center_temp_centi_c(void)
 const uint16_t *tiny1c_thermal_app_get_temp14_frame(void)
 {
     return g_tiny1c_temp14_frame;
+}
+
+/**
+ * @brief Convert one inverse raw module value to calibrated Kelvin x 16.
+ * @param raw_temp14 Uncorrected module value after Y14 unpacking.
+ * @return uint16_t Calibrated Kelvin x 16 value for the active gain.
+ */
+uint16_t tiny1c_thermal_app_calibrate_temp14(uint16_t raw_temp14)
+{
+    if (raw_temp14 > CFG_TINY1C_TEMP14_MAX)
+    {
+        raw_temp14 = CFG_TINY1C_TEMP14_MAX;
+    }
+
+    return (g_tiny1c_gain_high != 0U) ?
+           g_tiny1c_calibration_high_lut[raw_temp14] :
+           g_tiny1c_calibration_low_lut[raw_temp14];
+}
+
+/**
+ * @brief Select the calibration curve matching the module gain mode.
+ * @param gain_high Non-zero for high gain, zero for low gain.
+ * @return None
+ */
+void tiny1c_thermal_app_set_gain_high(uint8_t gain_high)
+{
+    g_tiny1c_gain_high = (gain_high != 0U) ? 1U : 0U;
 }
 
 /**

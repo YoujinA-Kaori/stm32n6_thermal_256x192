@@ -466,6 +466,7 @@ static void thermal_gui_gain_event_cb(lv_event_t *e)
         if (tiny1c_vdcmd_set_gain_mode((uint8_t)gain_high_value) == IR_SUCCESS)
         {
             g_current_gain_high = (uint8_t)gain_high_value;
+            tiny1c_thermal_app_set_gain_high(g_current_gain_high);
             thermal_gui_refresh_gain_ui(&guider_ui);
         }
     }
