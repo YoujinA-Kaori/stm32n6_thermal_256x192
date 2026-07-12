@@ -79,6 +79,9 @@ static volatile uint8_t g_tiny1c_preview_mirror_enable = CFG_TINY1C_PREVIEW_MIRR
 static volatile uint8_t g_tiny1c_preview_flip_enable = CFG_TINY1C_PREVIEW_FLIP_DEFAULT_ENABLE;
 static volatile uint8_t g_tiny1c_preview_contrast_slider = CFG_TINY1C_PREVIEW_CONTRAST_DEFAULT_SLIDER;
 static volatile uint8_t g_tiny1c_gain_high = CFG_TINY1C_DEFAULT_HIGH_GAIN;
+static volatile uint32_t g_tiny1c_extrema_sequence = 0U;
+static volatile uint8_t g_tiny1c_extrema_valid = 0U;
+static volatile tiny1c_thermal_extrema_t g_tiny1c_extrema;
 static uint16_t g_tiny1c_calibration_high_lut[CFG_TINY1C_TEMP14_MAX + 1U]
 __attribute__((section(".EXTRAM"), aligned(32)));
 static uint16_t g_tiny1c_calibration_low_lut[CFG_TINY1C_TEMP14_MAX + 1U]
@@ -185,8 +188,10 @@ static void tiny1c_thermal_app_unpack_temp14_frame(const uint8_t *source_frame, 
 {
     const uint16_t *source_word_frame;
     const uint16_t *calibration_lut;
+    tiny1c_thermal_extrema_t extrema;
     uint32_t pixel_index;
     uint32_t pixel_count;
+    uint32_t valid_pixel_count = 0U;
 
     if ((source_frame == NULL) || (dest_frame == NULL))
     {
@@ -197,12 +202,56 @@ static void tiny1c_thermal_app_unpack_temp14_frame(const uint8_t *source_frame, 
     calibration_lut = (g_tiny1c_gain_high != 0U) ?
                       g_tiny1c_calibration_high_lut : g_tiny1c_calibration_low_lut;
     pixel_count = (uint32_t)CFG_TINY1C_FRAME_WIDTH * (uint32_t)CFG_TINY1C_FRAME_HEIGHT;
+    extrema.min_temp14 = 0xFFFFU;
+    extrema.max_temp14 = 0U;
+    extrema.min_temp_x = 0U;
+    extrema.min_temp_y = 0U;
+    extrema.max_temp_x = 0U;
+    extrema.max_temp_y = 0U;
 
     for (pixel_index = 0U; pixel_index < pixel_count; pixel_index++)
     {
         uint16_t raw_temp14 = (uint16_t)(source_word_frame[pixel_index] >> CFG_TINY1C_TEMP_RIGHT_SHIFT);
+        uint16_t calibrated_temp14 = calibration_lut[raw_temp14];
 
-        dest_frame[pixel_index] = calibration_lut[raw_temp14];
+        dest_frame[pixel_index] = calibrated_temp14;
+        if (calibrated_temp14 == 0U)
+        {
+            continue;
+        }
+
+        valid_pixel_count++;
+        if (calibrated_temp14 < extrema.min_temp14)
+        {
+            extrema.min_temp14 = calibrated_temp14;
+            extrema.min_temp_x = (uint16_t)(pixel_index % CFG_TINY1C_FRAME_WIDTH);
+            extrema.min_temp_y = (uint16_t)(pixel_index / CFG_TINY1C_FRAME_WIDTH);
+        }
+        if (calibrated_temp14 > extrema.max_temp14)
+        {
+            extrema.max_temp14 = calibrated_temp14;
+            extrema.max_temp_x = (uint16_t)(pixel_index % CFG_TINY1C_FRAME_WIDTH);
+            extrema.max_temp_y = (uint16_t)(pixel_index / CFG_TINY1C_FRAME_WIDTH);
+        }
+    }
+
+    if (valid_pixel_count != 0U)
+    {
+        extrema.center_temp14 = dest_frame[
+            ((uint32_t)CFG_TINY1C_FRAME_HEIGHT / 2U) * (uint32_t)CFG_TINY1C_FRAME_WIDTH +
+            ((uint32_t)CFG_TINY1C_FRAME_WIDTH / 2U)];
+        g_tiny1c_extrema_sequence++;
+        __DMB();
+        g_tiny1c_extrema.center_temp14 = extrema.center_temp14;
+        g_tiny1c_extrema.min_temp14 = extrema.min_temp14;
+        g_tiny1c_extrema.max_temp14 = extrema.max_temp14;
+        g_tiny1c_extrema.min_temp_x = extrema.min_temp_x;
+        g_tiny1c_extrema.min_temp_y = extrema.min_temp_y;
+        g_tiny1c_extrema.max_temp_x = extrema.max_temp_x;
+        g_tiny1c_extrema.max_temp_y = extrema.max_temp_y;
+        g_tiny1c_extrema_valid = 1U;
+        __DMB();
+        g_tiny1c_extrema_sequence++;
     }
 }
 
@@ -977,6 +1026,50 @@ int32_t tiny1c_thermal_app_get_center_temp_centi_c(void)
 const uint16_t *tiny1c_thermal_app_get_temp14_frame(void)
 {
     return g_tiny1c_temp14_frame;
+}
+
+/**
+ * @brief Get an atomic snapshot of the latest calibrated frame extrema.
+ * @param extrema Pointer receiving temperatures and zero-based sensor coordinates.
+ * @return uint8_t Non-zero when a complete snapshot is available.
+ */
+uint8_t tiny1c_thermal_app_get_frame_extrema(tiny1c_thermal_extrema_t *extrema)
+{
+    uint32_t sequence_before;
+    uint32_t sequence_after;
+    uint32_t retry_count;
+
+    if ((extrema == NULL) || (g_tiny1c_extrema_valid == 0U))
+    {
+        return 0U;
+    }
+
+    for (retry_count = 0U; retry_count < 3U; retry_count++)
+    {
+        sequence_before = g_tiny1c_extrema_sequence;
+        if ((sequence_before & 1U) != 0U)
+        {
+            continue;
+        }
+
+        __DMB();
+        extrema->center_temp14 = g_tiny1c_extrema.center_temp14;
+        extrema->min_temp14 = g_tiny1c_extrema.min_temp14;
+        extrema->max_temp14 = g_tiny1c_extrema.max_temp14;
+        extrema->min_temp_x = g_tiny1c_extrema.min_temp_x;
+        extrema->min_temp_y = g_tiny1c_extrema.min_temp_y;
+        extrema->max_temp_x = g_tiny1c_extrema.max_temp_x;
+        extrema->max_temp_y = g_tiny1c_extrema.max_temp_y;
+        __DMB();
+
+        sequence_after = g_tiny1c_extrema_sequence;
+        if ((sequence_before == sequence_after) && ((sequence_after & 1U) == 0U))
+        {
+            return 1U;
+        }
+    }
+
+    return 0U;
 }
 
 /**

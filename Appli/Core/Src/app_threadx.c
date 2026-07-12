@@ -145,11 +145,11 @@ typedef struct
 #define CFG_GUI_PREVIEW_HEIGHT                324U
 #define CFG_GUI_FULLSCREEN_WIDTH              640U
 #define CFG_GUI_FULLSCREEN_HEIGHT             480U
-#define CFG_GUI_OVERLAY_UPDATE_PERIOD_MS      120U
-#define CFG_EXTREMA_QUERY_THREAD_STACK_SIZE   2048U
-#define CFG_EXTREMA_QUERY_THREAD_PRIORITY     18U
-#define CFG_EXTREMA_QUERY_PERIOD_MS           80U
-#define CFG_EXTREMA_QUERY_PERIOD_TICKS        (((CFG_EXTREMA_QUERY_PERIOD_MS * TX_TIMER_TICKS_PER_SECOND) + 999U) / 1000U)
+#define CFG_GUI_OVERLAY_UPDATE_PERIOD_MS      125U
+#define CFG_EXTREMA_UPDATE_THREAD_STACK_SIZE  2048U
+#define CFG_EXTREMA_UPDATE_THREAD_PRIORITY    18U
+#define CFG_EXTREMA_UPDATE_PERIOD_MS          125U
+#define CFG_EXTREMA_UPDATE_PERIOD_TICKS       (((CFG_EXTREMA_UPDATE_PERIOD_MS * TX_TIMER_TICKS_PER_SECOND) + 999U) / 1000U)
 #define CFG_BATTERY_THREAD_STACK_SIZE         2048U
 #define CFG_BATTERY_THREAD_PRIORITY           19U
 #define CFG_BATTERY_POLL_PERIOD_MS            1000U
@@ -249,14 +249,14 @@ static TX_THREAD g_thermal_thread;
 static TX_THREAD g_gui_thread;
 static TX_THREAD g_uart_stream_thread;
 static TX_THREAD g_uart_command_thread;
-static TX_THREAD g_extrema_query_thread;
+static TX_THREAD g_extrema_update_thread;
 static TX_THREAD g_battery_thread;
 static TX_MUTEX g_thermal_ai_mutex;
 static ULONG g_thermal_thread_stack[CFG_THERMAL_THREAD_STACK_SIZE / sizeof(ULONG)];
 static ULONG g_gui_thread_stack[CFG_GUI_THREAD_STACK_SIZE / sizeof(ULONG)];
 static ULONG g_uart_stream_thread_stack[CFG_UART_STREAM_THREAD_STACK_SIZE / sizeof(ULONG)];
 static ULONG g_uart_command_thread_stack[CFG_UART_COMMAND_THREAD_STACK_SIZE / sizeof(ULONG)];
-static ULONG g_extrema_query_thread_stack[CFG_EXTREMA_QUERY_THREAD_STACK_SIZE / sizeof(ULONG)];
+static ULONG g_extrema_update_thread_stack[CFG_EXTREMA_UPDATE_THREAD_STACK_SIZE / sizeof(ULONG)];
 static ULONG g_battery_thread_stack[CFG_BATTERY_THREAD_STACK_SIZE / sizeof(ULONG)];
 static volatile float g_libirtemp_probe_sink_c = 0.0f;
 static volatile uint8_t g_uart_stream_tx_busy = 0U;
@@ -407,7 +407,7 @@ static VOID app_threadx_thermal_thread_entry(ULONG thread_input);
 static VOID app_threadx_gui_thread_entry(ULONG thread_input);
 static VOID app_threadx_uart_stream_thread_entry(ULONG thread_input);
 static VOID app_threadx_uart_command_thread_entry(ULONG thread_input);
-static VOID app_threadx_extrema_query_thread_entry(ULONG thread_input);
+static VOID app_threadx_extrema_update_thread_entry(ULONG thread_input);
 static VOID app_threadx_battery_thread_entry(ULONG thread_input);
 static void app_threadx_uart_process_command_line(const uint8_t *command_line_ptr);
 static uint8_t app_threadx_uart_command_rx_pop(uint8_t *rx_byte_ptr);
@@ -435,7 +435,6 @@ static uint16_t app_threadx_temp14_get_preview_oriented_sample(const uint16_t *t
                                                                uint16_t frame_height,
                                                                uint16_t preview_x,
                                                                uint16_t preview_y);
-static IrPoint_t app_threadx_build_center_point(uint16_t frame_width, uint16_t frame_height);
 static uint16_t __attribute__((unused)) app_threadx_rgb565_average4(uint16_t c00,
                                             uint16_t c10,
                                             uint16_t c01,
@@ -676,14 +675,14 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
     return ret;
   }
 
-  ret = tx_thread_create(&g_extrema_query_thread,
-                         "extrema_query_thread",
-                         app_threadx_extrema_query_thread_entry,
+  ret = tx_thread_create(&g_extrema_update_thread,
+                         "extrema_update_thread",
+                         app_threadx_extrema_update_thread_entry,
                          0U,
-                         g_extrema_query_thread_stack,
-                         sizeof(g_extrema_query_thread_stack),
-                         CFG_EXTREMA_QUERY_THREAD_PRIORITY,
-                         CFG_EXTREMA_QUERY_THREAD_PRIORITY,
+                         g_extrema_update_thread_stack,
+                         sizeof(g_extrema_update_thread_stack),
+                         CFG_EXTREMA_UPDATE_THREAD_PRIORITY,
+                         CFG_EXTREMA_UPDATE_THREAD_PRIORITY,
                          TX_NO_TIME_SLICE,
                          TX_AUTO_START);
   if (ret != TX_SUCCESS)
@@ -1067,22 +1066,6 @@ static uint16_t app_threadx_temp14_get_preview_oriented_sample(const uint16_t *t
   /* Mirror/flip is self-inverse, so the same transform maps preview coords back to raw source coords. */
   tiny1c_thermal_app_transform_frame_point(source_x, source_y, &source_x, &source_y);
   return temp14_frame[((uint32_t)source_y * (uint32_t)frame_width) + (uint32_t)source_x];
-}
-
-/**
-  * @brief  Build the center point using Tiny1-C 1-based coordinates.
-  * @param  frame_width Frame width in pixels.
-  * @param  frame_height Frame height in pixels.
-  * @retval IrPoint_t Center point for module point-temperature queries.
-  */
-static IrPoint_t app_threadx_build_center_point(uint16_t frame_width, uint16_t frame_height)
-{
-  IrPoint_t center_point;
-
-  center_point.x = (uint16_t)(frame_width / 2U + 1U);
-  center_point.y = (uint16_t)(frame_height / 2U + 1U);
-
-  return center_point;
 }
 
 /**
@@ -5041,57 +5024,42 @@ static VOID app_threadx_thermal_thread_entry(ULONG thread_input)
 }
 
 /**
-  * @brief  Low-priority extrema query thread entry.
+  * @brief  Publish calibrated frame extrema to the GUI cache at a fixed rate.
   * @param  thread_input Unused thread input parameter.
   * @retval None
   */
-static VOID app_threadx_extrema_query_thread_entry(ULONG thread_input)
+static VOID app_threadx_extrema_update_thread_entry(ULONG thread_input)
 {
-  MaxMinTempInfo_t max_min_temp_info;
-  uint16_t raw_hot_temp14;
-  uint16_t raw_cold_temp14;
-  uint16_t max_temp14;
-  uint16_t min_temp14;
-  uint16_t raw_center_temp14;
-  IrPoint_t center_point;
-
   TX_PARAMETER_NOT_USED(thread_input);
 
   for (;;)
   {
     if (g_tiny1c_app_started != 0U)
     {
-      if (tiny1c_vdcmd_get_frame_max_min_temp(&max_min_temp_info) == IR_SUCCESS)
-      {
-        /* This 256x192 module's raw response is inverse: the smallest raw
-         * value is the hottest point. Swap the extrema roles after applying
-         * the active gain calibration. */
-        raw_hot_temp14 = max_min_temp_info.min_temp;
-        raw_cold_temp14 = max_min_temp_info.max_temp;
-        (void)tiny1c_vdcmd_get_point_temp(max_min_temp_info.min_temp_point, &raw_hot_temp14);
-        (void)tiny1c_vdcmd_get_point_temp(max_min_temp_info.max_temp_point, &raw_cold_temp14);
-        max_temp14 = tiny1c_thermal_app_calibrate_temp14(raw_hot_temp14);
-        min_temp14 = tiny1c_thermal_app_calibrate_temp14(raw_cold_temp14);
-        g_extrema_cache_max_temp14 = max_temp14;
-        g_extrema_cache_min_temp14 = min_temp14;
-        g_extrema_cache_max_temp_x = max_min_temp_info.min_temp_point.x;
-        g_extrema_cache_max_temp_y = max_min_temp_info.min_temp_point.y;
-        g_extrema_cache_min_temp_x = max_min_temp_info.max_temp_point.x;
-        g_extrema_cache_min_temp_y = max_min_temp_info.max_temp_point.y;
-        g_extrema_cache_valid = 1U;
-      }
+      tiny1c_thermal_extrema_t extrema;
 
-      center_point = app_threadx_build_center_point(tiny1c_thermal_app_get_frame_width(),
-                                                    tiny1c_thermal_app_get_frame_height());
-      if (tiny1c_vdcmd_get_point_temp(center_point, &raw_center_temp14) == IR_SUCCESS)
+      if (tiny1c_thermal_app_get_frame_extrema(&extrema) != 0U)
       {
-        tiny1c_thermal_app_set_center_temp_centi_c(
-            app_threadx_temp14_to_compensated_centi_celsius(
-                tiny1c_thermal_app_calibrate_temp14(raw_center_temp14)));
+        g_extrema_cache_valid = 0U;
+        __DMB();
+        g_extrema_cache_max_temp14 = extrema.max_temp14;
+        g_extrema_cache_min_temp14 = extrema.min_temp14;
+        g_extrema_cache_max_temp_x = extrema.max_temp_x;
+        g_extrema_cache_max_temp_y = extrema.max_temp_y;
+        g_extrema_cache_min_temp_x = extrema.min_temp_x;
+        g_extrema_cache_min_temp_y = extrema.min_temp_y;
+        __DMB();
+        g_extrema_cache_valid = 1U;
+
+        if (extrema.center_temp14 != 0U)
+        {
+          tiny1c_thermal_app_set_center_temp_centi_c(
+              app_threadx_temp14_to_compensated_centi_celsius(extrema.center_temp14));
+        }
       }
     }
 
-    tx_thread_sleep((CFG_EXTREMA_QUERY_PERIOD_TICKS > 0U) ? CFG_EXTREMA_QUERY_PERIOD_TICKS : 1U);
+    tx_thread_sleep((CFG_EXTREMA_UPDATE_PERIOD_TICKS > 0U) ? CFG_EXTREMA_UPDATE_PERIOD_TICKS : 1U);
   }
 }
 
@@ -5734,12 +5702,7 @@ static VOID app_threadx_uart_stream_thread_entry(ULONG thread_input)
   {
     uint32_t frame_counter_now;
     const uint16_t *temp14_frame;
-    uint16_t center_temp14;
-    uint16_t raw_center_temp14;
-    int32_t center_temp_centi_c;
-    float corrected_center_temp_c;
     uint32_t tx_bytes;
-    IrPoint_t center_point;
 
     if (g_tiny1c_app_started == 0U)
     {
@@ -5771,29 +5734,6 @@ static VOID app_threadx_uart_stream_thread_entry(ULONG thread_input)
     {
       tx_thread_sleep(CFG_UART_STREAM_PERIOD_TICKS);
       continue;
-    }
-
-    center_temp14 = temp14_frame[((CFG_UART_STREAM_SOURCE_HEIGHT / 2U) * CFG_UART_STREAM_SOURCE_WIDTH) +
-                                 (CFG_UART_STREAM_SOURCE_WIDTH / 2U)];
-    center_point = app_threadx_build_center_point(CFG_UART_STREAM_SOURCE_WIDTH, CFG_UART_STREAM_SOURCE_HEIGHT);
-    if (tiny1c_vdcmd_get_point_temp(center_point, &raw_center_temp14) == IR_SUCCESS)
-    {
-      center_temp14 = tiny1c_thermal_app_calibrate_temp14(raw_center_temp14);
-    }
-    center_temp_centi_c = app_threadx_temp14_to_centi_celsius(center_temp14);
-    corrected_center_temp_c = (float)center_temp_centi_c / 100.0f;
-
-    if (app_threadx_libirtemp_temp_correct(CFG_LIBIRTEMP_TEST_EMISSIVITY,
-                                           CFG_LIBIRTEMP_TEST_TAU_Q14,
-                                           CFG_LIBIRTEMP_TEST_AMBIENT_TEMP_C,
-                                           corrected_center_temp_c,
-                                           &corrected_center_temp_c) == 0)
-    {
-      tiny1c_thermal_app_set_center_temp_centi_c(app_threadx_float_to_centi_celsius(corrected_center_temp_c));
-    }
-    else
-    {
-      tiny1c_thermal_app_set_center_temp_centi_c(center_temp_centi_c);
     }
 
     tx_bytes = app_threadx_uart_stream_build_packet(g_uart_stream_tx_buffer, temp14_frame, frame_counter_now);

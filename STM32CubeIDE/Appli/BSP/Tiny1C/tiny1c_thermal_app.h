@@ -9,6 +9,17 @@
 extern "C" {
 #endif
 
+typedef struct
+{
+    uint16_t center_temp14;
+    uint16_t min_temp14;
+    uint16_t max_temp14;
+    uint16_t min_temp_x;
+    uint16_t min_temp_y;
+    uint16_t max_temp_x;
+    uint16_t max_temp_y;
+} tiny1c_thermal_extrema_t;
+
 /**
  * @brief Start the Tiny1-C temperature streaming application.
  * @param None
@@ -37,6 +48,13 @@ void tiny1c_thermal_app_on_frame_event(DCMIPP_HandleTypeDef *dcmipp_handle, uint
  * @return const uint16_t* Pointer to the Y14 frame buffer.
  */
 const uint16_t *tiny1c_thermal_app_get_temp14_frame(void);
+
+/**
+ * @brief Get an atomic snapshot of the latest calibrated frame extrema.
+ * @param extrema Pointer receiving temperatures and zero-based sensor coordinates.
+ * @return uint8_t Non-zero when a complete snapshot is available.
+ */
+uint8_t tiny1c_thermal_app_get_frame_extrema(tiny1c_thermal_extrema_t *extrema);
 
 /**
  * @brief Convert one inverse raw module value to calibrated Kelvin x 16.
