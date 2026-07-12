@@ -101,6 +101,11 @@
 			<locationURI>PARENT-2-PROJECT_LOC/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_cortex.c</locationURI>
 		</link>
 		<link>
+			<name>Drivers/STM32N6xx_HAL_Driver/stm32n6xx_hal_dcmi.c</name>
+			<type>1</type>
+			<locationURI>PARENT-2-PROJECT_LOC/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dcmi.c</locationURI>
+		</link>
+		<link>
 			<name>Drivers/STM32N6xx_HAL_Driver/stm32n6xx_hal_dcmipp.c</name>
 			<type>1</type>
 			<locationURI>PARENT-2-PROJECT_LOC/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dcmipp.c</locationURI>
@@ -236,14 +241,19 @@
 			<locationURI>PARENT-2-PROJECT_LOC/STM32CubeIDE/Appli/ThirdParty/libirtemp/libirtemp.lib</locationURI>
 		</link>
 		<link>
-			<name>Application/User/Core/thermal_project_config.h</name>
-			<type>1</type>
-			<locationURI>PARENT-2-PROJECT_LOC/Appli/Core/Inc/thermal_project_config.h</locationURI>
-		</link>
-		<link>
 			<name>Application/User/Core/app_threadx.c</name>
 			<type>1</type>
 			<locationURI>PARENT-2-PROJECT_LOC/Appli/Core/Src/app_threadx.c</locationURI>
+		</link>
+		<link>
+			<name>Application/User/Core/csi.c</name>
+			<type>1</type>
+			<locationURI>PARENT-2-PROJECT_LOC/Appli/Core/Src/csi.c</locationURI>
+		</link>
+		<link>
+			<name>Application/User/Core/dcmi.c</name>
+			<type>1</type>
+			<locationURI>PARENT-2-PROJECT_LOC/Appli/Core/Src/dcmi.c</locationURI>
 		</link>
 		<link>
 			<name>Application/User/Core/dcmipp.c</name>
@@ -329,6 +339,11 @@
 			<name>Application/User/Core/thermal_ai_runtime.c</name>
 			<type>1</type>
 			<locationURI>PARENT-2-PROJECT_LOC/Appli/Core/Src/thermal_ai_runtime.c</locationURI>
+		</link>
+		<link>
+			<name>Application/User/Core/thermal_project_config.h</name>
+			<type>1</type>
+			<locationURI>PARENT-2-PROJECT_LOC/Appli/Core/Inc/thermal_project_config.h</locationURI>
 		</link>
 		<link>
 			<name>Application/User/Core/tx_initialize_low_level.S</name>

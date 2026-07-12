@@ -16,6 +16,12 @@
 #define CFG_THERMAL_GUI_BG_COLOR                 0x050709U
 #define CFG_THERMAL_GUI_PANEL_COLOR              0x0b0f13U
 #define CFG_THERMAL_GUI_BORDER_COLOR             0x26313bU
+#define CFG_CAMERA_ALIGN_FINE_MOVE_PX             1
+#define CFG_CAMERA_ALIGN_COARSE_MOVE_PX           5
+#define CFG_CAMERA_ALIGN_FINE_SCALE_PERMILLE      5
+#define CFG_CAMERA_ALIGN_COARSE_SCALE_PERMILLE    20
+#define CFG_CAMERA_ALIGN_FINE_ALPHA               4
+#define CFG_CAMERA_ALIGN_COARSE_ALPHA             13
 
 static lv_obj_t *g_snapshot_gallery_screen = NULL;
 static lv_obj_t *g_snapshot_gallery_title = NULL;
@@ -43,6 +49,11 @@ static uint32_t g_snapshot_gallery_snapshot_index = 0U;
 static uint8_t g_auto_snapshot_enable = 0U;
 static uint8_t g_auto_snapshot_period_seconds = 3U;
 static uint32_t g_auto_snapshot_last_tick_ms = 0U;
+static lv_obj_t *g_camera_mode_buttons[3] = {NULL, NULL, NULL};
+static lv_obj_t *g_camera_alignment_panel = NULL;
+static lv_obj_t *g_camera_alignment_value_label = NULL;
+static lv_obj_t *g_camera_alignment_step_button = NULL;
+static uint8_t g_camera_alignment_coarse_step = 0U;
 static uint16_t g_snapshot_canvas_rgb565[CFG_THERMAL_GUI_SNAPSHOT_MAX_PIXELS]
   __attribute__((section(".EXTRAM"), aligned(32)));
 static uint16_t g_snapshot_view_rgb565[CFG_THERMAL_GUI_SNAPSHOT_MAX_PIXELS]
@@ -69,6 +80,8 @@ static void thermal_gui_snapshot_draw_badge_with_font(lv_obj_t *canvas,
                                                       const char *text,
                                                       lv_color_t text_color,
                                                       const lv_font_t *font_ptr);
+static void thermal_gui_camera_controls_create(lv_ui *ui);
+static void thermal_gui_camera_controls_refresh(void);
 
 /**
  * @brief Get the first child label text inside a container object.
@@ -173,6 +186,232 @@ static lv_obj_t *thermal_gui_create_custom_button(lv_obj_t *parent,
     lv_obj_center(label_obj);
 
     return button;
+}
+
+typedef enum
+{
+    CAMERA_ALIGN_UP = 0,
+    CAMERA_ALIGN_DOWN,
+    CAMERA_ALIGN_LEFT,
+    CAMERA_ALIGN_RIGHT,
+    CAMERA_ALIGN_ZOOM_OUT,
+    CAMERA_ALIGN_ZOOM_IN,
+    CAMERA_ALIGN_ALPHA_DOWN,
+    CAMERA_ALIGN_ALPHA_UP,
+    CAMERA_ALIGN_STEP_TOGGLE,
+    CAMERA_ALIGN_RESET
+} thermal_gui_camera_align_action_t;
+
+/**
+ * @brief Refresh mode-button highlighting and live calibration values.
+ * @return None.
+ */
+static void thermal_gui_camera_controls_refresh(void)
+{
+    app_camera_alignment_t alignment;
+    app_camera_view_mode_t mode = app_camera_view_get_mode();
+    char value_text[96];
+    uint32_t index;
+
+    for (index = 0U; index < 3U; index++)
+    {
+        if (g_camera_mode_buttons[index] == NULL)
+        {
+            continue;
+        }
+        lv_obj_set_style_border_width(g_camera_mode_buttons[index],
+                                      (index == (uint32_t)mode) ? 3 : 1,
+                                      LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_color(g_camera_mode_buttons[index],
+                                  lv_color_hex((index == (uint32_t)mode) ? 0x263846U : 0x11171dU),
+                                  LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+
+    if (g_camera_alignment_panel != NULL)
+    {
+        if (mode == APP_CAMERA_VIEW_FUSION)
+        {
+            lv_obj_clear_flag(g_camera_alignment_panel, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(g_camera_alignment_panel);
+        }
+        else
+        {
+            lv_obj_add_flag(g_camera_alignment_panel, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    app_camera_alignment_get(&alignment);
+    if (g_camera_alignment_value_label != NULL)
+    {
+        (void)snprintf(value_text,
+                       sizeof(value_text),
+                       "SCALE %u.%u%%\nX %+d px   Y %+d px\nALPHA %u%%",
+                       (unsigned int)(alignment.scale_permille / 10U),
+                       (unsigned int)(alignment.scale_permille % 10U),
+                       (int)alignment.offset_x,
+                       (int)alignment.offset_y,
+                       (unsigned int)(((uint32_t)alignment.visible_alpha * 100U + 127U) / 255U));
+        lv_label_set_text(g_camera_alignment_value_label, value_text);
+    }
+
+    if (g_camera_alignment_step_button != NULL)
+    {
+        thermal_gui_set_child_label_text(g_camera_alignment_step_button,
+                                         (g_camera_alignment_coarse_step != 0U) ? "STEP 5" : "STEP 1");
+    }
+}
+
+/**
+ * @brief Handle one footer camera-mode selection.
+ * @param e LVGL event descriptor; user data carries app_camera_view_mode_t.
+ * @return None.
+ */
+static void thermal_gui_camera_mode_event_cb(lv_event_t *e)
+{
+    app_camera_view_mode_t mode = (app_camera_view_mode_t)(uintptr_t)lv_event_get_user_data(e);
+
+    app_camera_view_set_mode(mode);
+    thermal_gui_camera_controls_refresh();
+}
+
+/**
+ * @brief Apply one calibration-panel action.
+ * @param e LVGL event descriptor; user data carries the requested action.
+ * @return None.
+ */
+static void thermal_gui_camera_alignment_event_cb(lv_event_t *e)
+{
+    thermal_gui_camera_align_action_t action =
+        (thermal_gui_camera_align_action_t)(uintptr_t)lv_event_get_user_data(e);
+    int16_t move_step = (g_camera_alignment_coarse_step != 0U) ?
+                        CFG_CAMERA_ALIGN_COARSE_MOVE_PX : CFG_CAMERA_ALIGN_FINE_MOVE_PX;
+    int16_t scale_step = (g_camera_alignment_coarse_step != 0U) ?
+                         CFG_CAMERA_ALIGN_COARSE_SCALE_PERMILLE : CFG_CAMERA_ALIGN_FINE_SCALE_PERMILLE;
+    int16_t alpha_step = (g_camera_alignment_coarse_step != 0U) ?
+                         CFG_CAMERA_ALIGN_COARSE_ALPHA : CFG_CAMERA_ALIGN_FINE_ALPHA;
+
+    switch (action)
+    {
+        case CAMERA_ALIGN_UP:
+            app_camera_alignment_adjust(0, (int16_t)-move_step, 0, 0);
+            break;
+        case CAMERA_ALIGN_DOWN:
+            app_camera_alignment_adjust(0, move_step, 0, 0);
+            break;
+        case CAMERA_ALIGN_LEFT:
+            app_camera_alignment_adjust((int16_t)-move_step, 0, 0, 0);
+            break;
+        case CAMERA_ALIGN_RIGHT:
+            app_camera_alignment_adjust(move_step, 0, 0, 0);
+            break;
+        case CAMERA_ALIGN_ZOOM_OUT:
+            app_camera_alignment_adjust(0, 0, (int16_t)-scale_step, 0);
+            break;
+        case CAMERA_ALIGN_ZOOM_IN:
+            app_camera_alignment_adjust(0, 0, scale_step, 0);
+            break;
+        case CAMERA_ALIGN_ALPHA_DOWN:
+            app_camera_alignment_adjust(0, 0, 0, (int16_t)-alpha_step);
+            break;
+        case CAMERA_ALIGN_ALPHA_UP:
+            app_camera_alignment_adjust(0, 0, 0, alpha_step);
+            break;
+        case CAMERA_ALIGN_STEP_TOGGLE:
+            g_camera_alignment_coarse_step = (g_camera_alignment_coarse_step == 0U) ? 1U : 0U;
+            break;
+        case CAMERA_ALIGN_RESET:
+            app_camera_alignment_reset();
+            break;
+        default:
+            break;
+    }
+
+    thermal_gui_camera_controls_refresh();
+}
+
+/**
+ * @brief Create footer mode selectors and the mixed-view calibration panel.
+ * @param ui UI context.
+ * @return None.
+ */
+static void thermal_gui_camera_controls_create(lv_ui *ui)
+{
+    static const char *mode_text[3] = {"IR", "VIS", "MIX"};
+    static const lv_coord_t mode_x[3] = {310, 376, 442};
+    lv_obj_t *title_label;
+    lv_obj_t *button;
+    uint32_t index;
+
+    if ((ui == NULL) || (ui->WidgetsDemo_footer_bar == NULL) || (ui->WidgetsDemo == NULL))
+    {
+        return;
+    }
+
+    for (index = 0U; index < 3U; index++)
+    {
+        g_camera_mode_buttons[index] = thermal_gui_create_custom_button(ui->WidgetsDemo_footer_bar,
+                                                                        mode_text[index],
+                                                                        mode_x[index],
+                                                                        9,
+                                                                        60,
+                                                                        0x48b3ffU);
+        lv_obj_add_event_cb(g_camera_mode_buttons[index],
+                            thermal_gui_camera_mode_event_cb,
+                            LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)index);
+    }
+
+    g_camera_alignment_panel = lv_obj_create(ui->WidgetsDemo);
+    lv_obj_set_pos(g_camera_alignment_panel, 8, 72);
+    lv_obj_set_size(g_camera_alignment_panel, 292, 332);
+    lv_obj_clear_flag(g_camera_alignment_panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(g_camera_alignment_panel, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(g_camera_alignment_panel, lv_color_hex(CFG_THERMAL_GUI_PANEL_COLOR), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(g_camera_alignment_panel, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(g_camera_alignment_panel, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(g_camera_alignment_panel, lv_color_hex(0x48b3ffU), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(g_camera_alignment_panel, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    title_label = lv_label_create(g_camera_alignment_panel);
+    lv_label_set_text(title_label, "ALIGN VISIBLE");
+    lv_obj_set_pos(title_label, 16, 8);
+    lv_obj_set_style_text_font(title_label, &lv_font_montserratMedium_19, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(title_label, lv_color_hex(0x7bc6ffU), LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    g_camera_alignment_value_label = lv_label_create(g_camera_alignment_panel);
+    lv_obj_set_pos(g_camera_alignment_value_label, 16, 36);
+    lv_obj_set_size(g_camera_alignment_value_label, 260, 60);
+    lv_obj_set_style_text_font(g_camera_alignment_value_label, &lv_font_montserratMedium_19, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(g_camera_alignment_value_label, lv_color_hex(0xf0f4f7U), LV_PART_MAIN | LV_STATE_DEFAULT);
+
+#define CAMERA_ALIGN_BUTTON(_text, _x, _y, _w, _action) do { \
+    button = thermal_gui_create_custom_button(g_camera_alignment_panel, (_text), (_x), (_y), (_w), 0x48b3ffU); \
+    lv_obj_add_event_cb(button, thermal_gui_camera_alignment_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)(_action)); \
+} while (0)
+
+    CAMERA_ALIGN_BUTTON("UP", 107, 96, 78, CAMERA_ALIGN_UP);
+    CAMERA_ALIGN_BUTTON("LEFT", 18, 140, 78, CAMERA_ALIGN_LEFT);
+    CAMERA_ALIGN_BUTTON("DOWN", 107, 140, 78, CAMERA_ALIGN_DOWN);
+    CAMERA_ALIGN_BUTTON("RIGHT", 196, 140, 78, CAMERA_ALIGN_RIGHT);
+    CAMERA_ALIGN_BUTTON("ZOOM -", 18, 184, 122, CAMERA_ALIGN_ZOOM_OUT);
+    CAMERA_ALIGN_BUTTON("ZOOM +", 152, 184, 122, CAMERA_ALIGN_ZOOM_IN);
+    CAMERA_ALIGN_BUTTON("ALPHA -", 18, 228, 122, CAMERA_ALIGN_ALPHA_DOWN);
+    CAMERA_ALIGN_BUTTON("ALPHA +", 152, 228, 122, CAMERA_ALIGN_ALPHA_UP);
+
+    g_camera_alignment_step_button = thermal_gui_create_custom_button(g_camera_alignment_panel,
+                                                                       "STEP 1",
+                                                                       18,
+                                                                       272,
+                                                                       122,
+                                                                       0xffa23aU);
+    lv_obj_add_event_cb(g_camera_alignment_step_button,
+                        thermal_gui_camera_alignment_event_cb,
+                        LV_EVENT_CLICKED,
+                        (void *)(uintptr_t)CAMERA_ALIGN_STEP_TOGGLE);
+    CAMERA_ALIGN_BUTTON("RESET", 152, 272, 122, CAMERA_ALIGN_RESET);
+#undef CAMERA_ALIGN_BUTTON
+
+    thermal_gui_camera_controls_refresh();
 }
 
 /**
@@ -1273,6 +1512,7 @@ void custom_init(lv_ui *ui)
     }
 
     g_snapshot_ui = ui;
+    thermal_gui_camera_controls_create(ui);
     thermal_gui_set_child_label_text(ui->WidgetsDemo_btn_save, "拍照");
     lv_obj_add_event_cb(ui->WidgetsDemo_btn_save, thermal_gui_snapshot_save_event_cb, LV_EVENT_CLICKED, ui);
 

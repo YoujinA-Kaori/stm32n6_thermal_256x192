@@ -43,6 +43,21 @@ typedef enum
   APP_UART_FILE_HOLD_WEB  = 0x02U
 } app_uart_file_hold_t;
 
+typedef enum
+{
+  APP_CAMERA_VIEW_THERMAL = 0U,
+  APP_CAMERA_VIEW_VISIBLE,
+  APP_CAMERA_VIEW_FUSION
+} app_camera_view_mode_t;
+
+typedef struct
+{
+  int16_t offset_x;
+  int16_t offset_y;
+  uint16_t scale_permille;
+  uint8_t visible_alpha;
+} app_camera_alignment_t;
+
 #define CFG_APP_THERMAL_AI_SNAPSHOT_MAX_BOXES  8U
 #define CFG_APP_THERMAL_AI_SNAPSHOT_LABEL_LEN  32U
 
@@ -98,6 +113,15 @@ uint8_t app_thermal_ai_get_preview_pseudo_mode(void);
 uint32_t app_thermal_ai_snapshot_collect_boxes(uint8_t fullscreen,
                                                app_thermal_ai_snapshot_box_t *box_array,
                                                uint32_t max_boxes);
+void app_imx219_on_frame_event(void);
+void app_camera_view_set_mode(app_camera_view_mode_t mode);
+app_camera_view_mode_t app_camera_view_get_mode(void);
+void app_camera_alignment_get(app_camera_alignment_t *alignment);
+void app_camera_alignment_adjust(int16_t delta_x,
+                                 int16_t delta_y,
+                                 int16_t delta_scale_permille,
+                                 int16_t delta_alpha);
+void app_camera_alignment_reset(void);
 
 /* USER CODE END EFP */
 

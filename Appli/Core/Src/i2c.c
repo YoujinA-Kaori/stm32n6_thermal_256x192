@@ -180,6 +180,38 @@ UINT app_i2c4_bus_lock(void)
 }
 
 /**
+  * @brief  Acquire the shared I2C4 bus mutex with a bounded wait time.
+  * @param  timeout_ms Maximum wait in milliseconds; zero performs a non-blocking attempt.
+  * @retval UINT `TX_SUCCESS` when the caller owns the bus, otherwise a ThreadX status code.
+  */
+UINT app_i2c4_bus_lock_timeout(uint32_t timeout_ms)
+{
+  ULONG wait_ticks;
+  UINT status;
+
+  status = app_i2c4_bus_mutex_init();
+  if (status != TX_SUCCESS)
+  {
+    return status;
+  }
+
+  if (timeout_ms == 0U)
+  {
+    wait_ticks = TX_NO_WAIT;
+  }
+  else
+  {
+    wait_ticks = (ULONG)((((uint64_t)timeout_ms * TX_TIMER_TICKS_PER_SECOND) + 999ULL) / 1000ULL);
+    if (wait_ticks == 0U)
+    {
+      wait_ticks = 1U;
+    }
+  }
+
+  return tx_mutex_get(&g_app_i2c4_bus_mutex, wait_ticks);
+}
+
+/**
   * @brief  Release the shared I2C4 bus mutex when it is held.
   * @param  None
   * @retval None

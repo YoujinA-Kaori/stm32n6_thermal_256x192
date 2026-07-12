@@ -57,6 +57,13 @@ UINT app_i2c4_bus_mutex_init(void);
 UINT app_i2c4_bus_lock(void);
 
 /**
+ * @brief Acquire the shared I2C4 bus mutex with a bounded wait time.
+ * @param timeout_ms Maximum time to wait in milliseconds; zero performs a non-blocking attempt.
+ * @return UINT `TX_SUCCESS` when the caller owns the bus, otherwise a ThreadX status code.
+ */
+UINT app_i2c4_bus_lock_timeout(uint32_t timeout_ms);
+
+/**
  * @brief Release the shared I2C4 bus mutex when it is held.
  * @param None
  * @return None

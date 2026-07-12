@@ -950,7 +950,10 @@ ir_error_t tiny1c_thermal_app_start(void)
     HAL_Delay(20U);
 #endif
 
-    if (HAL_DCMIPP_PIPE_Start(&hdcmipp, DCMIPP_PIPE0, (uint32_t)g_tiny1c_raw_frame, DCMIPP_MODE_CONTINUOUS) != HAL_OK)
+    if (HAL_DCMI_Start_DMA(&hdcmi,
+                           DCMI_MODE_CONTINUOUS,
+                           (uint32_t)g_tiny1c_raw_frame,
+                           CFG_TINY1C_FRAME_BYTES / sizeof(uint32_t)) != HAL_OK)
     {
         return IR_CONTROL_TRANSFER_FAIL;
     }
@@ -973,9 +976,9 @@ void tiny1c_thermal_app_process(void)
 
 /**
  * @brief DCMIPP 甯у畬鎴愪簨浠跺洖璋冨叆鍙ｃ€? * @param dcmipp_handle DCMIPP 鍙ユ焺鎸囬拡銆? * @param pipe 绠￠亾缂栧彿銆? * @return 鏃犮€? */
-void tiny1c_thermal_app_on_frame_event(DCMIPP_HandleTypeDef *dcmipp_handle, uint32_t pipe)
+void tiny1c_thermal_app_on_frame_event(DCMI_HandleTypeDef *dcmi_handle)
 {
-    if ((dcmipp_handle != NULL) && (dcmipp_handle->Instance == DCMIPP) && (pipe == DCMIPP_PIPE0))
+    if ((dcmi_handle != NULL) && (dcmi_handle->Instance == DCMI))
     {
         g_tiny1c_frame_ready = 1U;
     }

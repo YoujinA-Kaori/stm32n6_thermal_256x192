@@ -50,10 +50,13 @@
 #include "thermal_ai_runtime.h"
 #include "thermal_project_config.h"
 #include "BQ27441/bq27441g1a.h"
+#include "IMX219/Inc/app_camera_imx219.h"
+#include "IMX219/Inc/app_camera_isp.h"
 #include "Tiny1C/tiny1c_thermal_app.h"
 #include "Tiny1C/tiny1c_vdcmd_app.h"
 #include "usart.h"
 #include "RGBLCD/rgblcd.h"
+#include "dcmipp.h"
 
 /* USER CODE END Includes */
 
@@ -145,6 +148,16 @@ typedef struct
 #define CFG_GUI_PREVIEW_HEIGHT                324U
 #define CFG_GUI_FULLSCREEN_WIDTH              640U
 #define CFG_GUI_FULLSCREEN_HEIGHT             480U
+#define CFG_CAMERA_CANVAS_WIDTH               512U
+#define CFG_CAMERA_CANVAS_HEIGHT              384U
+#define CFG_CAMERA_ALIGNMENT_SCALE_MIN        500U
+#define CFG_CAMERA_ALIGNMENT_SCALE_MAX        2000U
+#define CFG_CAMERA_ALIGNMENT_OFFSET_MIN_X     (-256)
+#define CFG_CAMERA_ALIGNMENT_OFFSET_MAX_X     256
+#define CFG_CAMERA_ALIGNMENT_OFFSET_MIN_Y     (-192)
+#define CFG_CAMERA_ALIGNMENT_OFFSET_MAX_Y     192
+#define CFG_CAMERA_ALIGNMENT_DEFAULT_SCALE    1000U
+#define CFG_CAMERA_ALIGNMENT_DEFAULT_ALPHA    128U
 #define CFG_GUI_OVERLAY_UPDATE_PERIOD_MS      125U
 #define CFG_EXTREMA_UPDATE_THREAD_STACK_SIZE  2048U
 #define CFG_EXTREMA_UPDATE_THREAD_PRIORITY    18U
@@ -155,6 +168,14 @@ typedef struct
 #define CFG_BATTERY_POLL_PERIOD_MS            1000U
 #define CFG_BATTERY_POLL_PERIOD_TICKS         (((CFG_BATTERY_POLL_PERIOD_MS * TX_TIMER_TICKS_PER_SECOND) + 999U) / 1000U)
 #define CFG_BATTERY_I2C_TIMEOUT_MS            100U
+#define CFG_IMX219_THREAD_STACK_SIZE           3072U
+#define CFG_IMX219_THREAD_PRIORITY             20U
+#define CFG_IMX219_STARTUP_DELAY_MS            2000U
+#define CFG_IMX219_RETRY_DELAY_MS              2000U
+#define CFG_IMX219_CONTROL_PERIOD_MS           1000U
+#define CFG_IMX219_FRAME_WIDTH                 640U
+#define CFG_IMX219_FRAME_HEIGHT                480U
+#define CFG_IMX219_FRAME_BYTES                 (CFG_IMX219_FRAME_WIDTH * CFG_IMX219_FRAME_HEIGHT * sizeof(uint16_t))
 #define CFG_THERMAL_AI_INPUT_WIDTH            CFG_THERMAL_SENSOR_WIDTH
 #define CFG_THERMAL_AI_INPUT_HEIGHT           CFG_THERMAL_SENSOR_HEIGHT
 #define CFG_THERMAL_AI_INPUT_PIXELS           (CFG_THERMAL_AI_INPUT_WIDTH * CFG_THERMAL_AI_INPUT_HEIGHT)
@@ -251,6 +272,7 @@ static TX_THREAD g_uart_stream_thread;
 static TX_THREAD g_uart_command_thread;
 static TX_THREAD g_extrema_update_thread;
 static TX_THREAD g_battery_thread;
+static TX_THREAD g_imx219_thread;
 static TX_MUTEX g_thermal_ai_mutex;
 static ULONG g_thermal_thread_stack[CFG_THERMAL_THREAD_STACK_SIZE / sizeof(ULONG)];
 static ULONG g_gui_thread_stack[CFG_GUI_THREAD_STACK_SIZE / sizeof(ULONG)];
@@ -258,6 +280,24 @@ static ULONG g_uart_stream_thread_stack[CFG_UART_STREAM_THREAD_STACK_SIZE / size
 static ULONG g_uart_command_thread_stack[CFG_UART_COMMAND_THREAD_STACK_SIZE / sizeof(ULONG)];
 static ULONG g_extrema_update_thread_stack[CFG_EXTREMA_UPDATE_THREAD_STACK_SIZE / sizeof(ULONG)];
 static ULONG g_battery_thread_stack[CFG_BATTERY_THREAD_STACK_SIZE / sizeof(ULONG)];
+static ULONG g_imx219_thread_stack[CFG_IMX219_THREAD_STACK_SIZE / sizeof(ULONG)];
+static uint16_t g_imx219_rgb565_frame_a[CFG_IMX219_FRAME_WIDTH * CFG_IMX219_FRAME_HEIGHT]
+  __attribute__((section(".EXTRAM"), aligned(32)));
+static uint16_t g_imx219_rgb565_frame_b[CFG_IMX219_FRAME_WIDTH * CFG_IMX219_FRAME_HEIGHT]
+  __attribute__((section(".EXTRAM"), aligned(32)));
+volatile int32_t g_imx219_runtime_status = APP_CAMERA_IMX219_ERROR_I2C;
+volatile uint16_t g_imx219_runtime_chip_id = 0U;
+volatile uint32_t g_imx219_runtime_frame_counter = 0U;
+static volatile uintptr_t g_imx219_completed_frame_address = 0U;
+static volatile app_camera_view_mode_t g_camera_view_mode = APP_CAMERA_VIEW_THERMAL;
+static volatile app_camera_alignment_t g_camera_alignment =
+{
+  .offset_x = 0,
+  .offset_y = 0,
+  .scale_permille = CFG_CAMERA_ALIGNMENT_DEFAULT_SCALE,
+  .visible_alpha = CFG_CAMERA_ALIGNMENT_DEFAULT_ALPHA,
+};
+static volatile uint32_t g_camera_render_generation = 1U;
 static volatile float g_libirtemp_probe_sink_c = 0.0f;
 static volatile uint8_t g_uart_stream_tx_busy = 0U;
 static volatile uint32_t g_uart_file_hold_mask = 0U;
@@ -290,6 +330,10 @@ static uint16_t g_gui_preview_rgb565_frame[CFG_GUI_PREVIEW_WIDTH * CFG_GUI_PREVI
   __attribute__((section(".EXTRAM"), aligned(32)));
 static uint16_t g_gui_fullscreen_rgb565_frame[CFG_GUI_FULLSCREEN_WIDTH * CFG_GUI_FULLSCREEN_HEIGHT]
   __attribute__((section(".EXTRAM"), aligned(32)));
+static uint16_t g_gui_camera_canvas_rgb565[CFG_CAMERA_CANVAS_WIDTH * CFG_CAMERA_CANVAS_HEIGHT]
+  __attribute__((section(".EXTRAM"), aligned(32)));
+static int16_t g_gui_visible_x_map[CFG_CAMERA_CANVAS_WIDTH];
+static int16_t g_gui_visible_y_map[CFG_CAMERA_CANVAS_HEIGHT];
 static uint16_t g_uart_file_rgb565_frame[CFG_UART_FILE_MAX_PIXELS]
   __attribute__((section(".EXTRAM"), aligned(32)));
 static uint16_t g_thermal_ai_corrected_temp14[CFG_THERMAL_AI_INPUT_PIXELS]
@@ -409,6 +453,7 @@ static VOID app_threadx_uart_stream_thread_entry(ULONG thread_input);
 static VOID app_threadx_uart_command_thread_entry(ULONG thread_input);
 static VOID app_threadx_extrema_update_thread_entry(ULONG thread_input);
 static VOID app_threadx_battery_thread_entry(ULONG thread_input);
+static VOID app_threadx_imx219_thread_entry(ULONG thread_input);
 static void app_threadx_uart_process_command_line(const uint8_t *command_line_ptr);
 static uint8_t app_threadx_uart_command_rx_pop(uint8_t *rx_byte_ptr);
 static UINT app_threadx_uart_send_text(const char *text_ptr);
@@ -584,6 +629,11 @@ static void app_threadx_gui_build_scaled_frame(const uint16_t *source_frame,
                                                uint16_t source_height,
                                                uint16_t dest_width,
                                                uint16_t dest_height);
+static const uint16_t *app_threadx_imx219_get_completed_frame(void);
+static uint8_t app_threadx_gui_build_camera_canvas(void);
+static void app_threadx_gui_render_camera_frame(uint16_t *dest_frame,
+                                                uint16_t dest_width,
+                                                uint16_t dest_height);
 static void app_threadx_gui_format_temp_text(char *buffer, uint32_t buffer_size, const char *prefix, int32_t temp_centi_c, uint8_t unit_celsius);
 
 /* USER CODE END PFP */
@@ -698,6 +748,21 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
                          sizeof(g_battery_thread_stack),
                          CFG_BATTERY_THREAD_PRIORITY,
                          CFG_BATTERY_THREAD_PRIORITY,
+                         TX_NO_TIME_SLICE,
+                         TX_AUTO_START);
+  if (ret != TX_SUCCESS)
+  {
+    return ret;
+  }
+
+  ret = tx_thread_create(&g_imx219_thread,
+                         "imx219_thread",
+                         app_threadx_imx219_thread_entry,
+                         0U,
+                         g_imx219_thread_stack,
+                         sizeof(g_imx219_thread_stack),
+                         CFG_IMX219_THREAD_PRIORITY,
+                         CFG_IMX219_THREAD_PRIORITY,
                          TX_NO_TIME_SLICE,
                          TX_AUTO_START);
   /* USER CODE END App_ThreadX_Init */
@@ -2237,18 +2302,7 @@ static uint8_t app_threadx_gui_update_preview(lv_ui *ui)
   */
 static void app_threadx_gui_update_fullscreen_image(void)
 {
-  const uint16_t *preview_rgb565_frame;
-
-  preview_rgb565_frame = tiny1c_thermal_app_get_rgb565_frame();
-  if (preview_rgb565_frame == NULL)
-  {
-    return;
-  }
-
-  app_threadx_gui_build_scaled_frame(preview_rgb565_frame,
-                                      g_gui_fullscreen_rgb565_frame,
-                                      tiny1c_thermal_app_get_preview_width(),
-                                      tiny1c_thermal_app_get_preview_height(),
+  app_threadx_gui_render_camera_frame(g_gui_fullscreen_rgb565_frame,
                                       CFG_GUI_FULLSCREEN_WIDTH,
                                       CFG_GUI_FULLSCREEN_HEIGHT);
 }
@@ -2448,6 +2502,9 @@ static void app_threadx_gui_build_scaled_frame(const uint16_t *source_frame,
 {
   uint32_t dest_y;
   uint32_t dest_x;
+  uint32_t source_x_step_q16;
+  uint32_t source_y_step_q16;
+  uint32_t source_y_q16;
 
   if ((source_frame == NULL) || (dest_frame == NULL) ||
       (source_width == 0U) || (source_height == 0U) ||
@@ -2477,11 +2534,16 @@ static void app_threadx_gui_build_scaled_frame(const uint16_t *source_frame,
     return;
   }
 
+  source_x_step_q16 = ((uint32_t)source_width << 16) / dest_width;
+  source_y_step_q16 = ((uint32_t)source_height << 16) / dest_height;
+  source_y_q16 = source_y_step_q16 / 2U;
+
   for (dest_y = 0U; dest_y < dest_height; dest_y++)
   {
-    uint32_t src_y = (((dest_y * 2U) + 1U) * (uint32_t)source_height) / ((uint32_t)dest_height * 2U);
+    uint32_t src_y = source_y_q16 >> 16;
     uint32_t dest_row_index = dest_y * (uint32_t)dest_width;
     uint32_t src_row_index;
+    uint32_t source_x_q16 = source_x_step_q16 / 2U;
 
     if (src_y >= source_height)
     {
@@ -2491,14 +2553,279 @@ static void app_threadx_gui_build_scaled_frame(const uint16_t *source_frame,
 
     for (dest_x = 0U; dest_x < dest_width; dest_x++)
     {
-      uint32_t src_x = (((dest_x * 2U) + 1U) * (uint32_t)source_width) / ((uint32_t)dest_width * 2U);
+      uint32_t src_x = source_x_q16 >> 16;
       if (src_x >= source_width)
       {
         src_x = (uint32_t)source_width - 1U;
       }
       dest_frame[dest_row_index + dest_x] = source_frame[src_row_index + src_x];
+      source_x_q16 += source_x_step_q16;
+    }
+    source_y_q16 += source_y_step_q16;
+  }
+}
+
+/**
+  * @brief  Select the camera image shown by the GUI.
+  * @param  mode Thermal, visible-light, or fusion view.
+  * @retval None
+  */
+void app_camera_view_set_mode(app_camera_view_mode_t mode)
+{
+  if (mode > APP_CAMERA_VIEW_FUSION)
+  {
+    mode = APP_CAMERA_VIEW_THERMAL;
+  }
+
+  if (g_camera_view_mode != mode)
+  {
+    g_camera_view_mode = mode;
+    g_camera_render_generation++;
+    __DMB();
+  }
+}
+
+/**
+  * @brief  Read the active camera view mode.
+  * @retval app_camera_view_mode_t Current GUI view mode.
+  */
+app_camera_view_mode_t app_camera_view_get_mode(void)
+{
+  return g_camera_view_mode;
+}
+
+/**
+  * @brief  Copy the current visible-light alignment parameters.
+  * @param  alignment Destination parameter structure.
+  * @retval None
+  */
+void app_camera_alignment_get(app_camera_alignment_t *alignment)
+{
+  if (alignment == NULL)
+  {
+    return;
+  }
+
+  alignment->offset_x = g_camera_alignment.offset_x;
+  alignment->offset_y = g_camera_alignment.offset_y;
+  alignment->scale_permille = g_camera_alignment.scale_permille;
+  alignment->visible_alpha = g_camera_alignment.visible_alpha;
+}
+
+/**
+  * @brief  Apply bounded incremental alignment changes to the visible layer.
+  * @param  delta_x Horizontal movement in 512x384 canvas pixels.
+  * @param  delta_y Vertical movement in 512x384 canvas pixels.
+  * @param  delta_scale_permille Scale change in one-thousandths.
+  * @param  delta_alpha Visible-layer alpha change.
+  * @retval None
+  */
+void app_camera_alignment_adjust(int16_t delta_x,
+                                 int16_t delta_y,
+                                 int16_t delta_scale_permille,
+                                 int16_t delta_alpha)
+{
+  int32_t offset_x = (int32_t)g_camera_alignment.offset_x + delta_x;
+  int32_t offset_y = (int32_t)g_camera_alignment.offset_y + delta_y;
+  int32_t scale = (int32_t)g_camera_alignment.scale_permille + delta_scale_permille;
+  int32_t alpha = (int32_t)g_camera_alignment.visible_alpha + delta_alpha;
+
+  if (offset_x < CFG_CAMERA_ALIGNMENT_OFFSET_MIN_X) offset_x = CFG_CAMERA_ALIGNMENT_OFFSET_MIN_X;
+  if (offset_x > CFG_CAMERA_ALIGNMENT_OFFSET_MAX_X) offset_x = CFG_CAMERA_ALIGNMENT_OFFSET_MAX_X;
+  if (offset_y < CFG_CAMERA_ALIGNMENT_OFFSET_MIN_Y) offset_y = CFG_CAMERA_ALIGNMENT_OFFSET_MIN_Y;
+  if (offset_y > CFG_CAMERA_ALIGNMENT_OFFSET_MAX_Y) offset_y = CFG_CAMERA_ALIGNMENT_OFFSET_MAX_Y;
+  if (scale < (int32_t)CFG_CAMERA_ALIGNMENT_SCALE_MIN) scale = CFG_CAMERA_ALIGNMENT_SCALE_MIN;
+  if (scale > (int32_t)CFG_CAMERA_ALIGNMENT_SCALE_MAX) scale = CFG_CAMERA_ALIGNMENT_SCALE_MAX;
+  if (alpha < 0) alpha = 0;
+  if (alpha > 255) alpha = 255;
+
+  g_camera_alignment.offset_x = (int16_t)offset_x;
+  g_camera_alignment.offset_y = (int16_t)offset_y;
+  g_camera_alignment.scale_permille = (uint16_t)scale;
+  g_camera_alignment.visible_alpha = (uint8_t)alpha;
+  g_camera_render_generation++;
+  __DMB();
+}
+
+/**
+  * @brief  Restore neutral visible-light alignment and 50 percent alpha.
+  * @retval None
+  */
+void app_camera_alignment_reset(void)
+{
+  g_camera_alignment.offset_x = 0;
+  g_camera_alignment.offset_y = 0;
+  g_camera_alignment.scale_permille = CFG_CAMERA_ALIGNMENT_DEFAULT_SCALE;
+  g_camera_alignment.visible_alpha = CFG_CAMERA_ALIGNMENT_DEFAULT_ALPHA;
+  g_camera_render_generation++;
+  __DMB();
+}
+
+/**
+  * @brief  Return the latest completed IMX219 capture buffer.
+  * @retval const uint16_t* Completed RGB565 frame, or NULL before the first frame.
+  */
+static const uint16_t *app_threadx_imx219_get_completed_frame(void)
+{
+  uintptr_t frame_address;
+
+  __DMB();
+  frame_address = g_imx219_completed_frame_address;
+  if ((frame_address != (uintptr_t)g_imx219_rgb565_frame_a) &&
+      (frame_address != (uintptr_t)g_imx219_rgb565_frame_b))
+  {
+    return NULL;
+  }
+
+  return (const uint16_t *)frame_address;
+}
+
+/**
+  * @brief  Transform the visible frame into the thermal 512x384 coordinate system.
+  * @retval uint8_t 1 when a visible frame was available, otherwise 0.
+  */
+static uint8_t app_threadx_gui_build_camera_canvas(void)
+{
+  const uint16_t *visible_frame = app_threadx_imx219_get_completed_frame();
+  const uint16_t *thermal_frame = tiny1c_thermal_app_get_rgb565_frame();
+  app_camera_alignment_t alignment;
+  app_camera_view_mode_t mode = g_camera_view_mode;
+  uint32_t x;
+  uint32_t y;
+
+  app_camera_alignment_get(&alignment);
+  if (visible_frame == NULL)
+  {
+    if ((mode == APP_CAMERA_VIEW_FUSION) && (thermal_frame != NULL))
+    {
+      memcpy(g_gui_camera_canvas_rgb565,
+             thermal_frame,
+             sizeof(g_gui_camera_canvas_rgb565));
+    }
+    else
+    {
+      memset(g_gui_camera_canvas_rgb565, 0, sizeof(g_gui_camera_canvas_rgb565));
+    }
+    return 0U;
+  }
+
+  app_threadx_dcache_invalidate_by_addr((void *)visible_frame, CFG_IMX219_FRAME_BYTES);
+
+  for (x = 0U; x < CFG_CAMERA_CANVAS_WIDTH; x++)
+  {
+    int32_t common_x = (int32_t)(CFG_CAMERA_CANVAS_WIDTH / 2U) +
+                       (((int32_t)x - alignment.offset_x - (int32_t)(CFG_CAMERA_CANVAS_WIDTH / 2U)) * 1000) /
+                       (int32_t)alignment.scale_permille;
+    int32_t source_x = (common_x * (int32_t)CFG_IMX219_FRAME_WIDTH) /
+                       (int32_t)CFG_CAMERA_CANVAS_WIDTH;
+    g_gui_visible_x_map[x] = ((source_x >= 0) && (source_x < (int32_t)CFG_IMX219_FRAME_WIDTH)) ?
+                             (int16_t)source_x : (int16_t)-1;
+  }
+
+  for (y = 0U; y < CFG_CAMERA_CANVAS_HEIGHT; y++)
+  {
+    int32_t common_y = (int32_t)(CFG_CAMERA_CANVAS_HEIGHT / 2U) +
+                       (((int32_t)y - alignment.offset_y - (int32_t)(CFG_CAMERA_CANVAS_HEIGHT / 2U)) * 1000) /
+                       (int32_t)alignment.scale_permille;
+    int32_t source_y = (common_y * (int32_t)CFG_IMX219_FRAME_HEIGHT) /
+                       (int32_t)CFG_CAMERA_CANVAS_HEIGHT;
+    g_gui_visible_y_map[y] = ((source_y >= 0) && (source_y < (int32_t)CFG_IMX219_FRAME_HEIGHT)) ?
+                             (int16_t)source_y : (int16_t)-1;
+  }
+
+  if ((mode == APP_CAMERA_VIEW_FUSION) && (thermal_frame != NULL))
+  {
+    memcpy(g_gui_camera_canvas_rgb565,
+           thermal_frame,
+           sizeof(g_gui_camera_canvas_rgb565));
+  }
+  else
+  {
+    memset(g_gui_camera_canvas_rgb565, 0, sizeof(g_gui_camera_canvas_rgb565));
+  }
+
+  for (y = 0U; y < CFG_CAMERA_CANVAS_HEIGHT; y++)
+  {
+    int32_t source_y = g_gui_visible_y_map[y];
+    uint32_t canvas_row = y * CFG_CAMERA_CANVAS_WIDTH;
+    uint32_t source_row;
+
+    if (source_y < 0)
+    {
+      continue;
+    }
+    source_row = (uint32_t)source_y * CFG_IMX219_FRAME_WIDTH;
+
+    for (x = 0U; x < CFG_CAMERA_CANVAS_WIDTH; x++)
+    {
+      int32_t source_x = g_gui_visible_x_map[x];
+      uint32_t canvas_index = canvas_row + x;
+      uint16_t visible_pixel;
+
+      if (source_x < 0)
+      {
+        continue;
+      }
+      visible_pixel = visible_frame[source_row + (uint32_t)source_x];
+
+      if (mode == APP_CAMERA_VIEW_FUSION)
+      {
+        uint16_t thermal_pixel = g_gui_camera_canvas_rgb565[canvas_index];
+        uint32_t visible_weight = alignment.visible_alpha;
+        uint32_t thermal_weight = 256U - visible_weight;
+        uint32_t red = ((((uint32_t)(visible_pixel >> 11) & 0x1FU) * visible_weight) +
+                        (((uint32_t)(thermal_pixel >> 11) & 0x1FU) * thermal_weight)) >> 8;
+        uint32_t green = ((((uint32_t)(visible_pixel >> 5) & 0x3FU) * visible_weight) +
+                          (((uint32_t)(thermal_pixel >> 5) & 0x3FU) * thermal_weight)) >> 8;
+        uint32_t blue = ((((uint32_t)visible_pixel & 0x1FU) * visible_weight) +
+                         (((uint32_t)thermal_pixel & 0x1FU) * thermal_weight)) >> 8;
+        g_gui_camera_canvas_rgb565[canvas_index] = (uint16_t)((red << 11) | (green << 5) | blue);
+      }
+      else
+      {
+        g_gui_camera_canvas_rgb565[canvas_index] = visible_pixel;
+      }
     }
   }
+
+  return 1U;
+}
+
+/**
+  * @brief  Render the selected camera view into a GUI image buffer.
+  * @param  dest_frame Destination RGB565 frame.
+  * @param  dest_width Destination width.
+  * @param  dest_height Destination height.
+  * @retval None
+  */
+static void app_threadx_gui_render_camera_frame(uint16_t *dest_frame,
+                                                uint16_t dest_width,
+                                                uint16_t dest_height)
+{
+  const uint16_t *source_frame;
+  uint16_t source_width;
+  uint16_t source_height;
+
+  if (g_camera_view_mode == APP_CAMERA_VIEW_THERMAL)
+  {
+    source_frame = tiny1c_thermal_app_get_rgb565_frame();
+    source_width = tiny1c_thermal_app_get_preview_width();
+    source_height = tiny1c_thermal_app_get_preview_height();
+  }
+  else
+  {
+    (void)app_threadx_gui_build_camera_canvas();
+    source_frame = g_gui_camera_canvas_rgb565;
+    source_width = CFG_CAMERA_CANVAS_WIDTH;
+    source_height = CFG_CAMERA_CANVAS_HEIGHT;
+  }
+
+  app_threadx_gui_build_scaled_frame(source_frame,
+                                     dest_frame,
+                                     source_width,
+                                     source_height,
+                                     dest_width,
+                                     dest_height);
 }
 /**
   * @brief  Return whether the compiled thermal network buffers are ready for inference.
@@ -5118,15 +5445,120 @@ static VOID app_threadx_battery_thread_entry(ULONG thread_input)
 }
 
 /**
+  * @brief  Notify the low-priority IMX219 control loop that Pipe1 completed a frame.
+  * @param  None
+  * @retval None
+  */
+void app_imx219_on_frame_event(void)
+{
+  uint32_t completed_address = HAL_DCMIPP_PIPE_GetMemoryAddress(&hdcmipp,
+                                                                DCMIPP_PIPE1,
+                                                                DCMIPP_MEMORY_ADDRESS_0);
+
+  if ((completed_address == (uint32_t)g_imx219_rgb565_frame_a) ||
+      (completed_address == (uint32_t)g_imx219_rgb565_frame_b))
+  {
+    g_imx219_completed_frame_address = (uintptr_t)completed_address;
+  }
+  __DMB();
+  g_imx219_runtime_frame_counter++;
+}
+
+/**
+  * @brief  Bring up IMX219 and run low-rate AE/AWB without blocking Tiny1C controls.
+  * @param  thread_input Unused thread input parameter.
+  * @retval None
+  */
+static VOID app_threadx_imx219_thread_entry(ULONG thread_input)
+{
+  const AppCameraIMX219Config_t camera_config =
+  {
+    .width = CFG_IMX219_FRAME_WIDTH,
+    .height = CFG_IMX219_FRAME_HEIGHT,
+    .fps = 15U,
+    .input_clock_hz = 24000000UL,
+  };
+  uint32_t frame_counter_last = 0U;
+  uint16_t chip_id = 0U;
+
+  TX_PARAMETER_NOT_USED(thread_input);
+  tx_thread_sleep((CFG_IMX219_STARTUP_DELAY_MS * TX_TIMER_TICKS_PER_SECOND + 999U) / 1000U);
+
+  for (;;)
+  {
+    AppCameraISPStats_t stats;
+    int32_t status;
+
+    if (g_imx219_runtime_status != APP_CAMERA_IMX219_OK)
+    {
+      status = AppCameraIMX219_Init(&camera_config, &chip_id);
+      g_imx219_runtime_chip_id = chip_id;
+      if (status == APP_CAMERA_IMX219_OK)
+      {
+        status = AppCameraISP_ConfigureIspChain(&hdcmipp, DCMIPP_PIPE1);
+      }
+      g_imx219_completed_frame_address = 0U;
+      g_imx219_runtime_frame_counter = 0U;
+      if ((status == APP_CAMERA_IMX219_OK) &&
+          (HAL_DCMIPP_CSI_PIPE_DoubleBufferStart(&hdcmipp,
+                                                  DCMIPP_PIPE1,
+                                                  DCMIPP_VIRTUAL_CHANNEL0,
+                                                  (uint32_t)g_imx219_rgb565_frame_a,
+                                                  (uint32_t)g_imx219_rgb565_frame_b,
+                                                  DCMIPP_MODE_CONTINUOUS) != HAL_OK))
+      {
+        status = APP_CAMERA_IMX219_ERROR_I2C;
+      }
+      if (status == APP_CAMERA_IMX219_OK)
+      {
+        status = AppCameraIMX219_SetStream(1U);
+      }
+
+      g_imx219_runtime_status = status;
+      if (status != APP_CAMERA_IMX219_OK)
+      {
+        tx_thread_sleep((CFG_IMX219_RETRY_DELAY_MS * TX_TIMER_TICKS_PER_SECOND + 999U) / 1000U);
+        continue;
+      }
+    }
+
+    if (g_imx219_runtime_frame_counter != frame_counter_last)
+    {
+      const uint16_t *completed_frame;
+
+      frame_counter_last = g_imx219_runtime_frame_counter;
+      completed_frame = app_threadx_imx219_get_completed_frame();
+      if (completed_frame != NULL)
+      {
+        app_threadx_dcache_invalidate_by_addr((void *)completed_frame, CFG_IMX219_FRAME_BYTES);
+        AppCameraISP_SampleRgb565(completed_frame,
+                                  CFG_IMX219_FRAME_WIDTH,
+                                  CFG_IMX219_FRAME_HEIGHT,
+                                  CFG_IMX219_FRAME_WIDTH * sizeof(uint16_t),
+                                  &stats);
+        AppCameraISP_RunAutoExposure(stats.luma_avg);
+        AppCameraISP_RunAutoWhiteBalance(&hdcmipp,
+                                         DCMIPP_PIPE1,
+                                         stats.r_avg8,
+                                         stats.g_avg8,
+                                         stats.b_avg8);
+      }
+    }
+
+    tx_thread_sleep((CFG_IMX219_CONTROL_PERIOD_MS * TX_TIMER_TICKS_PER_SECOND + 999U) / 1000U);
+  }
+}
+
+/**
   * @brief  GUI rendering thread entry.
   * @param  thread_input Unused thread input parameter.
   * @retval None
   */
 static VOID app_threadx_gui_thread_entry(ULONG thread_input)
 {
-  uint16_t preview_width;
-  uint16_t preview_height;
-  uint32_t frame_counter_last = 0U;
+  uint32_t thermal_frame_counter_last = 0U;
+  uint32_t visible_frame_counter_last = 0U;
+  uint32_t render_generation_last = 0U;
   uint32_t overlay_update_tick_last = 0U;
 
   TX_PARAMETER_NOT_USED(thread_input);
@@ -5141,16 +5573,11 @@ static VOID app_threadx_gui_thread_entry(ULONG thread_input)
   lv_obj_invalidate(lv_scr_act());
   lv_refr_now(NULL);
 
-  preview_width = tiny1c_thermal_app_get_preview_width();
-  preview_height = tiny1c_thermal_app_get_preview_height();
   g_gui_preview_img_dsc.header.cf = LV_IMG_CF_TRUE_COLOR;
   g_gui_preview_img_dsc.header.always_zero = 0U;
-  app_threadx_gui_build_scaled_frame(tiny1c_thermal_app_get_rgb565_frame(),
-                                    g_gui_preview_rgb565_frame,
-                                    preview_width,
-                                    preview_height,
-                                    CFG_GUI_PREVIEW_WIDTH,
-                                    CFG_GUI_PREVIEW_HEIGHT);
+  app_threadx_gui_render_camera_frame(g_gui_preview_rgb565_frame,
+                                      CFG_GUI_PREVIEW_WIDTH,
+                                      CFG_GUI_PREVIEW_HEIGHT);
   g_gui_preview_img_dsc.header.w = CFG_GUI_PREVIEW_WIDTH;
   g_gui_preview_img_dsc.header.h = CFG_GUI_PREVIEW_HEIGHT;
   g_gui_preview_img_dsc.data_size = CFG_GUI_PREVIEW_WIDTH * CFG_GUI_PREVIEW_HEIGHT * sizeof(uint16_t);
@@ -5173,7 +5600,9 @@ static VOID app_threadx_gui_thread_entry(ULONG thread_input)
 
   for (;;)
   {
-    uint32_t frame_counter_now;
+    uint32_t thermal_frame_counter_now;
+    uint32_t visible_frame_counter_now;
+    uint32_t render_generation_now;
     uint32_t now_ms;
     thermal_ai_result_t ai_draw_result;
     char time_text[16];
@@ -5182,17 +5611,51 @@ static VOID app_threadx_gui_thread_entry(ULONG thread_input)
     uint32_t seconds;
     uint8_t abnormal_detected = 0U;
 
-    frame_counter_now = tiny1c_thermal_app_get_frame_counter();
-    if ((frame_counter_now != 0U) && (frame_counter_now != frame_counter_last))
+    app_camera_view_mode_t camera_mode = g_camera_view_mode;
+    uint8_t render_needed = 0U;
+
+    thermal_frame_counter_now = tiny1c_thermal_app_get_frame_counter();
+    visible_frame_counter_now = g_imx219_runtime_frame_counter;
+    render_generation_now = g_camera_render_generation;
+
+    if (render_generation_now != render_generation_last)
+    {
+      render_needed = 1U;
+    }
+    else if ((camera_mode == APP_CAMERA_VIEW_THERMAL) &&
+             (thermal_frame_counter_now != 0U) &&
+             (thermal_frame_counter_now != thermal_frame_counter_last))
+    {
+      render_needed = 1U;
+    }
+    else if ((camera_mode == APP_CAMERA_VIEW_VISIBLE) &&
+             (visible_frame_counter_now != 0U) &&
+             (visible_frame_counter_now != visible_frame_counter_last))
+    {
+      render_needed = 1U;
+    }
+    else if ((camera_mode == APP_CAMERA_VIEW_FUSION) &&
+             (((visible_frame_counter_now != 0U) &&
+               (visible_frame_counter_now != visible_frame_counter_last)) ||
+              ((visible_frame_counter_now == 0U) &&
+               (thermal_frame_counter_now != thermal_frame_counter_last))))
+    {
+      render_needed = 1U;
+    }
+
+    thermal_frame_counter_last = thermal_frame_counter_now;
+    visible_frame_counter_last = visible_frame_counter_now;
+    render_generation_last = render_generation_now;
+
+    if (render_needed != 0U)
     {
       uint8_t ai_draw_result_valid = app_threadx_thermal_ai_get_result_snapshot(&ai_draw_result);
 
-      frame_counter_last = frame_counter_now;
       if (thermal_gui_is_fullscreen_active() != 0U)
       {
         app_threadx_gui_update_fullscreen_image();
 #if (CFG_THERMAL_AI_RGB565_BOX_COMPOSITE != 0U)
-        if (ai_draw_result_valid != 0U)
+        if ((camera_mode == APP_CAMERA_VIEW_THERMAL) && (ai_draw_result_valid != 0U))
         {
           app_threadx_gui_draw_ai_boxes_rgb565(g_gui_fullscreen_rgb565_frame,
                                                 CFG_GUI_FULLSCREEN_WIDTH,
@@ -5204,14 +5667,11 @@ static VOID app_threadx_gui_thread_entry(ULONG thread_input)
       }
       else
       {
-        app_threadx_gui_build_scaled_frame(tiny1c_thermal_app_get_rgb565_frame(),
-                                          g_gui_preview_rgb565_frame,
-                                          tiny1c_thermal_app_get_preview_width(),
-                                          tiny1c_thermal_app_get_preview_height(),
-                                          CFG_GUI_PREVIEW_WIDTH,
-                                          CFG_GUI_PREVIEW_HEIGHT);
+        app_threadx_gui_render_camera_frame(g_gui_preview_rgb565_frame,
+                                            CFG_GUI_PREVIEW_WIDTH,
+                                            CFG_GUI_PREVIEW_HEIGHT);
 #if (CFG_THERMAL_AI_RGB565_BOX_COMPOSITE != 0U)
-        if (ai_draw_result_valid != 0U)
+        if ((camera_mode == APP_CAMERA_VIEW_THERMAL) && (ai_draw_result_valid != 0U))
         {
           app_threadx_gui_draw_ai_boxes_rgb565(g_gui_preview_rgb565_frame,
                                                 CFG_GUI_PREVIEW_WIDTH,

@@ -1,9 +1,9 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * File Name          : linked_list.h
-  * Description        : This file provides code for the configuration
-  *                      of the LinkedList.
+  * @file    csi.h
+  * @brief   This file contains all the function prototypes for
+  *          the csi.c file
   ******************************************************************************
   * @attention
   *
@@ -17,26 +17,32 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
-
 /* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef LINKED_LIST_H
-#define LINKED_LIST_H
+#ifndef __CSI_H__
+#define __CSI_H__
 
 #ifdef __cplusplus
- extern "C" {
+extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-/* Exported types ------------------------------------------------------------*/
-/* Exported constants --------------------------------------------------------*/
-HAL_StatusTypeDef MX_CameraQueue_Config(void);
-extern DMA_QListTypeDef CameraQueue;
+/* USER CODE BEGIN Includes */
+
+/* USER CODE END Includes */
+
+/* USER CODE BEGIN Private defines */
+
+/* USER CODE END Private defines */
+
+/* USER CODE BEGIN Prototypes */
+
+/* USER CODE END Prototypes */
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* LINKED_LIST_H */
+#endif /* __CSI_H__ */
 

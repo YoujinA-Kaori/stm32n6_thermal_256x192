@@ -56,6 +56,7 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern DCMI_HandleTypeDef hdcmi;
 extern DCMIPP_HandleTypeDef hdcmipp;
 extern DMA_HandleTypeDef handle_HPDMA1_Channel15;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel0;
@@ -261,6 +262,22 @@ void USART1_IRQHandler(void)
   /* USER CODE BEGIN USART1_IRQn 1 */
 
   /* USER CODE END USART1_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DCMI/PSSI global interrupt.
+  */
+void DCMI_PSSI_IRQHandler(void)
+{
+  HAL_DCMI_IRQHandler(&hdcmi);
+}
+
+/**
+  * @brief This function handles CSI global interrupt.
+  */
+void CSI_IRQHandler(void)
+{
+  HAL_DCMIPP_CSI_IRQHandler(&hdcmipp);
 }
 
 /* USER CODE BEGIN 1 */

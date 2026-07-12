@@ -75,6 +75,10 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define CAM_EN_MODULE_Pin GPIO_PIN_6
+#define CAM_EN_MODULE_GPIO_Port GPIOG
+#define CAM_LED_EN_Pin GPIO_PIN_4
+#define CAM_LED_EN_GPIO_Port GPIOG
 
 /* USER CODE BEGIN Private defines */
 

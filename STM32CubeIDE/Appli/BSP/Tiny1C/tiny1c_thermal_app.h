@@ -2,7 +2,7 @@
 #define TINY1C_THERMAL_APP_H
 
 #include <stdint.h>
-#include "dcmipp.h"
+#include "dcmi.h"
 #include "tiny1c_vdcmd_app.h"
 
 #ifdef __cplusplus
@@ -35,12 +35,11 @@ ir_error_t tiny1c_thermal_app_start(void);
 void tiny1c_thermal_app_process(void);
 
 /**
- * @brief Handle the DCMIPP frame-complete callback for the temperature stream.
- * @param dcmipp_handle Pointer to the DCMIPP handle.
- * @param pipe DCMIPP pipe index.
+ * @brief Handle the DCMI frame-complete callback for the temperature stream.
+ * @param dcmi_handle Pointer to the DCMI handle.
  * @return None
  */
-void tiny1c_thermal_app_on_frame_event(DCMIPP_HandleTypeDef *dcmipp_handle, uint32_t pipe);
+void tiny1c_thermal_app_on_frame_event(DCMI_HandleTypeDef *dcmi_handle);
 
 /**
  * @brief Get the latest decoded Y14 temperature frame buffer.

@@ -1,9 +1,9 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * File Name          : linked_list.h
-  * Description        : This file provides code for the configuration
-  *                      of the LinkedList.
+  * @file    dcmi.h
+  * @brief   This file contains all the function prototypes for
+  *          the dcmi.c file
   ******************************************************************************
   * @attention
   *
@@ -17,26 +17,36 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
-
 /* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef LINKED_LIST_H
-#define LINKED_LIST_H
+#ifndef __DCMI_H__
+#define __DCMI_H__
 
 #ifdef __cplusplus
- extern "C" {
+extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-/* Exported types ------------------------------------------------------------*/
-/* Exported constants --------------------------------------------------------*/
-HAL_StatusTypeDef MX_CameraQueue_Config(void);
-extern DMA_QListTypeDef CameraQueue;
+/* USER CODE BEGIN Includes */
+
+/* USER CODE END Includes */
+
+extern DCMI_HandleTypeDef hdcmi;
+
+/* USER CODE BEGIN Private defines */
+
+/* USER CODE END Private defines */
+
+void MX_DCMI_Init(void);
+
+/* USER CODE BEGIN Prototypes */
+
+/* USER CODE END Prototypes */
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* LINKED_LIST_H */
+#endif /* __DCMI_H__ */
 

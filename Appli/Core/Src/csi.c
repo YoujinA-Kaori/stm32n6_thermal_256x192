@@ -1,9 +1,9 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * File Name          : linked_list.h
-  * Description        : This file provides code for the configuration
-  *                      of the LinkedList.
+  * @file    csi.c
+  * @brief   This file provides code for the configuration
+  *          of the CSI instances.
   ******************************************************************************
   * @attention
   *
@@ -17,26 +17,14 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
-
-/* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef LINKED_LIST_H
-#define LINKED_LIST_H
-
-#ifdef __cplusplus
- extern "C" {
-#endif
-
 /* Includes ------------------------------------------------------------------*/
-#include "main.h"
+#include "csi.h"
 
-/* Exported types ------------------------------------------------------------*/
-/* Exported constants --------------------------------------------------------*/
-HAL_StatusTypeDef MX_CameraQueue_Config(void);
-extern DMA_QListTypeDef CameraQueue;
+/* USER CODE BEGIN 0 */
 
-#ifdef __cplusplus
-}
-#endif
+/* USER CODE END 0 */
 
-#endif /* LINKED_LIST_H */
+/* USER CODE BEGIN 1 */
+
+/* USER CODE END 1 */
 
