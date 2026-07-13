@@ -89,6 +89,8 @@ uint16_t tiny1c_thermal_app_get_frame_height(void);
  * @return uint32_t Processed frame counter.
  */
 uint32_t tiny1c_thermal_app_get_frame_counter(void);
+uint32_t tiny1c_thermal_app_get_frame_timestamp_ms(void);
+uint32_t tiny1c_thermal_app_get_frame_sequence(void);
 
 /**
  * @brief Override the center temperature overlay value in 0.01 degrees Celsius.

@@ -12,6 +12,9 @@ extern "C" {
 #define APP_CAMERA_IMX219_ERROR_I2C_LOCK    -2
 #define APP_CAMERA_IMX219_ERROR_I2C         -3
 #define APP_CAMERA_IMX219_ERROR_CHIP_ID     -4
+#define APP_CAMERA_IMX219_ERROR_DCMIPP      -5
+#define APP_CAMERA_IMX219_ERROR_CSI         -6
+#define APP_CAMERA_IMX219_ERROR_NO_FRAME    -7
 
 extern volatile uint32_t g_app_camera_imx219_last_reg;
 extern volatile uint32_t g_app_camera_imx219_last_error;

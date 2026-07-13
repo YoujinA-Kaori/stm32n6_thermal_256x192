@@ -73,6 +73,9 @@ __attribute__((section(".EXTRAM"), aligned(32)));
 static uint16_t g_tiny1c_disp_x0 = 0U;
 static uint16_t g_tiny1c_disp_y0 = 0U;
 static volatile uint32_t g_tiny1c_frame_counter = 0U;
+static volatile uint32_t g_tiny1c_frame_timestamp_ms = 0U;
+static volatile uint32_t g_tiny1c_frame_event_timestamp_ms = 0U;
+static volatile uint32_t g_tiny1c_frame_sequence = 0U;
 static volatile uint8_t g_tiny1c_center_temp_centi_c_valid = 0U;
 static volatile int32_t g_tiny1c_center_temp_centi_c = 0;
 static volatile uint8_t g_tiny1c_preview_mirror_enable = CFG_TINY1C_PREVIEW_MIRROR_DEFAULT_ENABLE;
@@ -968,9 +971,18 @@ void tiny1c_thermal_app_process(void)
 {
     if (g_tiny1c_frame_ready != 0U)
     {
+        uint32_t frame_timestamp_ms;
+
         g_tiny1c_frame_ready = 0U;
+        frame_timestamp_ms = g_tiny1c_frame_event_timestamp_ms;
+        g_tiny1c_frame_sequence++;
+        __DMB();
         tiny1c_thermal_app_render_temperature_frame_2x();
+        __DMB();
+        g_tiny1c_frame_timestamp_ms = frame_timestamp_ms;
         g_tiny1c_frame_counter++;
+        g_tiny1c_frame_sequence++;
+        __DMB();
     }
 }
 
@@ -980,6 +992,8 @@ void tiny1c_thermal_app_on_frame_event(DCMI_HandleTypeDef *dcmi_handle)
 {
     if ((dcmi_handle != NULL) && (dcmi_handle->Instance == DCMI))
     {
+        g_tiny1c_frame_event_timestamp_ms = HAL_GetTick();
+        __DMB();
         g_tiny1c_frame_ready = 1U;
     }
 }
@@ -1119,6 +1133,24 @@ uint16_t tiny1c_thermal_app_get_frame_height(void)
 uint32_t tiny1c_thermal_app_get_frame_counter(void)
 {
     return g_tiny1c_frame_counter;
+}
+
+/**
+ * @brief Get the capture time of the latest completely rendered thermal frame.
+ * @return uint32_t HAL millisecond tick captured by the DCMI frame callback.
+ */
+uint32_t tiny1c_thermal_app_get_frame_timestamp_ms(void)
+{
+    return g_tiny1c_frame_timestamp_ms;
+}
+
+/**
+ * @brief Get the thermal RGB565 writer sequence used for lock-free snapshots.
+ * @return uint32_t Even when stable and odd while the preview buffer is written.
+ */
+uint32_t tiny1c_thermal_app_get_frame_sequence(void)
+{
+    return g_tiny1c_frame_sequence;
 }
 
 /**

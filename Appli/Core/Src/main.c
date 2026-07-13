@@ -228,7 +228,9 @@ void PeriphCommonClock_Config(void)
   HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_NPU, &RIMC_master);
 
   /*RISUP configuration*/
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_I2C4 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_USART1 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_TIM7 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_SDMMC2 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_CSI , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DCMI , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
@@ -236,6 +238,7 @@ void PeriphCommonClock_Config(void)
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DMA2D , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_LTDCL1 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_NPU , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_XSPI1 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_XSPI2 , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_XSPIM , RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
 
@@ -423,6 +426,30 @@ void HAL_DCMIPP_PIPE_FrameEventCallback(DCMIPP_HandleTypeDef *dcmipp_handle, uin
   if ((dcmipp_handle != NULL) && (dcmipp_handle->Instance == DCMIPP) && (pipe == DCMIPP_PIPE1))
   {
     app_imx219_on_frame_event();
+  }
+}
+
+void HAL_DCMIPP_PIPE_ErrorCallback(DCMIPP_HandleTypeDef *dcmipp_handle, uint32_t pipe)
+{
+  if ((dcmipp_handle != NULL) && (dcmipp_handle->Instance == DCMIPP) && (pipe == DCMIPP_PIPE1))
+  {
+    app_imx219_on_dcmipp_error(dcmipp_handle->ErrorCode);
+  }
+}
+
+void HAL_DCMIPP_ErrorCallback(DCMIPP_HandleTypeDef *dcmipp_handle)
+{
+  if ((dcmipp_handle != NULL) && (dcmipp_handle->Instance == DCMIPP))
+  {
+    app_imx219_on_dcmipp_error(dcmipp_handle->ErrorCode);
+  }
+}
+
+void HAL_DCMIPP_CSI_LineErrorCallback(DCMIPP_HandleTypeDef *dcmipp_handle, uint32_t data_lane)
+{
+  if ((dcmipp_handle != NULL) && (dcmipp_handle->Instance == DCMIPP))
+  {
+    app_imx219_on_csi_line_error(data_lane, dcmipp_handle->ErrorCode);
   }
 }
 

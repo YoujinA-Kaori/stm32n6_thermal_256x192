@@ -55,22 +55,13 @@ typedef struct
   int16_t offset_x;
   int16_t offset_y;
   uint16_t scale_permille;
+  int8_t rotation_degrees;
+  uint8_t transform_flags;
   uint8_t visible_alpha;
 } app_camera_alignment_t;
 
-#define CFG_APP_THERMAL_AI_SNAPSHOT_MAX_BOXES  8U
-#define CFG_APP_THERMAL_AI_SNAPSHOT_LABEL_LEN  32U
-
-typedef struct
-{
-  uint8_t valid;
-  uint16_t x;
-  uint16_t y;
-  uint16_t width;
-  uint16_t height;
-  uint32_t border_color_rgb888;
-  char label_text[CFG_APP_THERMAL_AI_SNAPSHOT_LABEL_LEN];
-} app_thermal_ai_snapshot_box_t;
+#define APP_CAMERA_ALIGNMENT_MIRROR 0x01U
+#define APP_CAMERA_ALIGNMENT_FLIP   0x02U
 
 /* USER CODE END ET */
 
@@ -105,22 +96,20 @@ void MX_ThreadX_Init(void);
 /* USER CODE BEGIN EFP */
 void app_uart_request_file_mode(uint32_t hold_mask);
 void app_uart_release_file_mode(uint32_t hold_mask);
-uint8_t app_uart_is_file_mode_active(void);
 void app_thermal_ai_set_enabled(uint8_t enable);
 uint8_t app_thermal_ai_is_enabled(void);
-void app_thermal_ai_set_preview_pseudo_mode(uint8_t pseudo_mode);
-uint8_t app_thermal_ai_get_preview_pseudo_mode(void);
-uint32_t app_thermal_ai_snapshot_collect_boxes(uint8_t fullscreen,
-                                               app_thermal_ai_snapshot_box_t *box_array,
-                                               uint32_t max_boxes);
 void app_imx219_on_frame_event(void);
+void app_imx219_on_dcmipp_error(uint32_t error_code);
+void app_imx219_on_csi_line_error(uint32_t data_lane, uint32_t error_code);
 void app_camera_view_set_mode(app_camera_view_mode_t mode);
 app_camera_view_mode_t app_camera_view_get_mode(void);
 void app_camera_alignment_get(app_camera_alignment_t *alignment);
 void app_camera_alignment_adjust(int16_t delta_x,
-                                 int16_t delta_y,
-                                 int16_t delta_scale_permille,
-                                 int16_t delta_alpha);
+                                  int16_t delta_y,
+                                  int16_t delta_scale_permille,
+                                  int8_t delta_rotation_degrees,
+                                  int16_t delta_alpha);
+void app_camera_alignment_toggle(uint8_t transform_flag);
 void app_camera_alignment_reset(void);
 
 /* USER CODE END EFP */

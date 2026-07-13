@@ -20,6 +20,8 @@
 #define CFG_CAMERA_ALIGN_COARSE_MOVE_PX           5
 #define CFG_CAMERA_ALIGN_FINE_SCALE_PERMILLE      5
 #define CFG_CAMERA_ALIGN_COARSE_SCALE_PERMILLE    20
+#define CFG_CAMERA_ALIGN_FINE_ROTATION_DEGREES     1
+#define CFG_CAMERA_ALIGN_COARSE_ROTATION_DEGREES   2
 #define CFG_CAMERA_ALIGN_FINE_ALPHA               4
 #define CFG_CAMERA_ALIGN_COARSE_ALPHA             13
 
@@ -62,9 +64,6 @@ static uint16_t g_snapshot_view_rgb565[CFG_THERMAL_GUI_SNAPSHOT_MAX_PIXELS]
 static void thermal_gui_gallery_create_screen(lv_ui *ui);
 static void thermal_gui_snapshot_ensure_canvas(void);
 static void thermal_gui_auto_snapshot_refresh_controls(void);
-static void thermal_gui_snapshot_draw_ai_boxes(lv_obj_t *canvas,
-                                               lv_obj_t *image_obj,
-                                               uint8_t fullscreen_mode);
 static void thermal_gui_snapshot_draw_badge(lv_obj_t *canvas,
                                             lv_coord_t x,
                                             lv_coord_t y,
@@ -196,8 +195,12 @@ typedef enum
     CAMERA_ALIGN_RIGHT,
     CAMERA_ALIGN_ZOOM_OUT,
     CAMERA_ALIGN_ZOOM_IN,
+    CAMERA_ALIGN_ROTATE_CCW,
+    CAMERA_ALIGN_ROTATE_CW,
     CAMERA_ALIGN_ALPHA_DOWN,
     CAMERA_ALIGN_ALPHA_UP,
+    CAMERA_ALIGN_MIRROR_TOGGLE,
+    CAMERA_ALIGN_FLIP_TOGGLE,
     CAMERA_ALIGN_STEP_TOGGLE,
     CAMERA_ALIGN_RESET
 } thermal_gui_camera_align_action_t;
@@ -245,11 +248,14 @@ static void thermal_gui_camera_controls_refresh(void)
     {
         (void)snprintf(value_text,
                        sizeof(value_text),
-                       "SCALE %u.%u%%\nX %+d px   Y %+d px\nALPHA %u%%",
+                       "S %u.%u%%  X %+d  Y %+d\nROT %+d  M%u  F%u\nALPHA %u%%",
                        (unsigned int)(alignment.scale_permille / 10U),
                        (unsigned int)(alignment.scale_permille % 10U),
                        (int)alignment.offset_x,
                        (int)alignment.offset_y,
+                       (int)alignment.rotation_degrees,
+                       (unsigned int)((alignment.transform_flags & APP_CAMERA_ALIGNMENT_MIRROR) != 0U),
+                       (unsigned int)((alignment.transform_flags & APP_CAMERA_ALIGNMENT_FLIP) != 0U),
                        (unsigned int)(((uint32_t)alignment.visible_alpha * 100U + 127U) / 255U));
         lv_label_set_text(g_camera_alignment_value_label, value_text);
     }
@@ -287,34 +293,48 @@ static void thermal_gui_camera_alignment_event_cb(lv_event_t *e)
                         CFG_CAMERA_ALIGN_COARSE_MOVE_PX : CFG_CAMERA_ALIGN_FINE_MOVE_PX;
     int16_t scale_step = (g_camera_alignment_coarse_step != 0U) ?
                          CFG_CAMERA_ALIGN_COARSE_SCALE_PERMILLE : CFG_CAMERA_ALIGN_FINE_SCALE_PERMILLE;
+    int8_t rotation_step = (g_camera_alignment_coarse_step != 0U) ?
+                           CFG_CAMERA_ALIGN_COARSE_ROTATION_DEGREES : CFG_CAMERA_ALIGN_FINE_ROTATION_DEGREES;
     int16_t alpha_step = (g_camera_alignment_coarse_step != 0U) ?
                          CFG_CAMERA_ALIGN_COARSE_ALPHA : CFG_CAMERA_ALIGN_FINE_ALPHA;
 
     switch (action)
     {
         case CAMERA_ALIGN_UP:
-            app_camera_alignment_adjust(0, (int16_t)-move_step, 0, 0);
+            app_camera_alignment_adjust(0, (int16_t)-move_step, 0, 0, 0);
             break;
         case CAMERA_ALIGN_DOWN:
-            app_camera_alignment_adjust(0, move_step, 0, 0);
+            app_camera_alignment_adjust(0, move_step, 0, 0, 0);
             break;
         case CAMERA_ALIGN_LEFT:
-            app_camera_alignment_adjust((int16_t)-move_step, 0, 0, 0);
+            app_camera_alignment_adjust((int16_t)-move_step, 0, 0, 0, 0);
             break;
         case CAMERA_ALIGN_RIGHT:
-            app_camera_alignment_adjust(move_step, 0, 0, 0);
+            app_camera_alignment_adjust(move_step, 0, 0, 0, 0);
             break;
         case CAMERA_ALIGN_ZOOM_OUT:
-            app_camera_alignment_adjust(0, 0, (int16_t)-scale_step, 0);
+            app_camera_alignment_adjust(0, 0, (int16_t)-scale_step, 0, 0);
             break;
         case CAMERA_ALIGN_ZOOM_IN:
-            app_camera_alignment_adjust(0, 0, scale_step, 0);
+            app_camera_alignment_adjust(0, 0, scale_step, 0, 0);
+            break;
+        case CAMERA_ALIGN_ROTATE_CCW:
+            app_camera_alignment_adjust(0, 0, 0, (int8_t)-rotation_step, 0);
+            break;
+        case CAMERA_ALIGN_ROTATE_CW:
+            app_camera_alignment_adjust(0, 0, 0, rotation_step, 0);
             break;
         case CAMERA_ALIGN_ALPHA_DOWN:
-            app_camera_alignment_adjust(0, 0, 0, (int16_t)-alpha_step);
+            app_camera_alignment_adjust(0, 0, 0, 0, (int16_t)-alpha_step);
             break;
         case CAMERA_ALIGN_ALPHA_UP:
-            app_camera_alignment_adjust(0, 0, 0, alpha_step);
+            app_camera_alignment_adjust(0, 0, 0, 0, alpha_step);
+            break;
+        case CAMERA_ALIGN_MIRROR_TOGGLE:
+            app_camera_alignment_toggle(APP_CAMERA_ALIGNMENT_MIRROR);
+            break;
+        case CAMERA_ALIGN_FLIP_TOGGLE:
+            app_camera_alignment_toggle(APP_CAMERA_ALIGNMENT_FLIP);
             break;
         case CAMERA_ALIGN_STEP_TOGGLE:
             g_camera_alignment_coarse_step = (g_camera_alignment_coarse_step == 0U) ? 1U : 0U;
@@ -389,26 +409,30 @@ static void thermal_gui_camera_controls_create(lv_ui *ui)
     lv_obj_add_event_cb(button, thermal_gui_camera_alignment_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)(_action)); \
 } while (0)
 
-    CAMERA_ALIGN_BUTTON("UP", 107, 96, 78, CAMERA_ALIGN_UP);
-    CAMERA_ALIGN_BUTTON("LEFT", 18, 140, 78, CAMERA_ALIGN_LEFT);
-    CAMERA_ALIGN_BUTTON("DOWN", 107, 140, 78, CAMERA_ALIGN_DOWN);
-    CAMERA_ALIGN_BUTTON("RIGHT", 196, 140, 78, CAMERA_ALIGN_RIGHT);
-    CAMERA_ALIGN_BUTTON("ZOOM -", 18, 184, 122, CAMERA_ALIGN_ZOOM_OUT);
-    CAMERA_ALIGN_BUTTON("ZOOM +", 152, 184, 122, CAMERA_ALIGN_ZOOM_IN);
-    CAMERA_ALIGN_BUTTON("ALPHA -", 18, 228, 122, CAMERA_ALIGN_ALPHA_DOWN);
-    CAMERA_ALIGN_BUTTON("ALPHA +", 152, 228, 122, CAMERA_ALIGN_ALPHA_UP);
+    CAMERA_ALIGN_BUTTON("UP", 18, 100, 58, CAMERA_ALIGN_UP);
+    CAMERA_ALIGN_BUTTON("DOWN", 82, 100, 58, CAMERA_ALIGN_DOWN);
+    CAMERA_ALIGN_BUTTON("LEFT", 146, 100, 58, CAMERA_ALIGN_LEFT);
+    CAMERA_ALIGN_BUTTON("RIGHT", 210, 100, 58, CAMERA_ALIGN_RIGHT);
+    CAMERA_ALIGN_BUTTON("Z -", 18, 142, 58, CAMERA_ALIGN_ZOOM_OUT);
+    CAMERA_ALIGN_BUTTON("Z +", 82, 142, 58, CAMERA_ALIGN_ZOOM_IN);
+    CAMERA_ALIGN_BUTTON("R -", 146, 142, 58, CAMERA_ALIGN_ROTATE_CCW);
+    CAMERA_ALIGN_BUTTON("R +", 210, 142, 58, CAMERA_ALIGN_ROTATE_CW);
+    CAMERA_ALIGN_BUTTON("A -", 18, 184, 58, CAMERA_ALIGN_ALPHA_DOWN);
+    CAMERA_ALIGN_BUTTON("A +", 82, 184, 58, CAMERA_ALIGN_ALPHA_UP);
+    CAMERA_ALIGN_BUTTON("MIR", 146, 184, 58, CAMERA_ALIGN_MIRROR_TOGGLE);
+    CAMERA_ALIGN_BUTTON("FLIP", 210, 184, 58, CAMERA_ALIGN_FLIP_TOGGLE);
 
     g_camera_alignment_step_button = thermal_gui_create_custom_button(g_camera_alignment_panel,
                                                                        "STEP 1",
                                                                        18,
-                                                                       272,
+                                                                       226,
                                                                        122,
                                                                        0xffa23aU);
     lv_obj_add_event_cb(g_camera_alignment_step_button,
                         thermal_gui_camera_alignment_event_cb,
                         LV_EVENT_CLICKED,
                         (void *)(uintptr_t)CAMERA_ALIGN_STEP_TOGGLE);
-    CAMERA_ALIGN_BUTTON("RESET", 152, 272, 122, CAMERA_ALIGN_RESET);
+    CAMERA_ALIGN_BUTTON("RESET", 152, 226, 122, CAMERA_ALIGN_RESET);
 #undef CAMERA_ALIGN_BUTTON
 
     thermal_gui_camera_controls_refresh();
@@ -685,109 +709,6 @@ static void thermal_gui_snapshot_draw_marker_from_obj(lv_obj_t *canvas,
     thermal_gui_snapshot_draw_marker(canvas, local_x, local_y, marker_text);
 }
 
-/**
- * @brief Draw currently visible AI boxes onto the snapshot canvas.
- * @param canvas Canvas object.
- * @param image_obj Base preview image object used as the local origin.
- * @param fullscreen_mode Non-zero selects full-screen overlay boxes.
- * @return None.
- */
-static void thermal_gui_snapshot_draw_ai_boxes(lv_obj_t *canvas,
-                                               lv_obj_t *image_obj,
-                                               uint8_t fullscreen_mode)
-{
-    app_thermal_ai_snapshot_box_t box_list[CFG_APP_THERMAL_AI_SNAPSHOT_MAX_BOXES];
-    uint32_t box_count;
-    uint32_t box_index;
-    lv_coord_t image_width;
-    lv_coord_t image_height;
-    lv_draw_rect_dsc_t rect_dsc;
-    lv_draw_label_dsc_t label_dsc;
-
-    if ((canvas == NULL) || (image_obj == NULL))
-    {
-        return;
-    }
-
-    image_width = lv_obj_get_width(image_obj);
-    image_height = lv_obj_get_height(image_obj);
-    box_count = app_thermal_ai_snapshot_collect_boxes(fullscreen_mode,
-                                                      box_list,
-                                                      CFG_APP_THERMAL_AI_SNAPSHOT_MAX_BOXES);
-    for (box_index = 0U; box_index < box_count; box_index++)
-    {
-        lv_coord_t local_x;
-        lv_coord_t local_y;
-        lv_coord_t box_w;
-        lv_coord_t box_h;
-
-        if (box_list[box_index].valid == 0U)
-        {
-            continue;
-        }
-
-        local_x = (lv_coord_t)((int32_t)box_list[box_index].x - lv_obj_get_x(image_obj));
-        local_y = (lv_coord_t)((int32_t)box_list[box_index].y - lv_obj_get_y(image_obj));
-        box_w = (lv_coord_t)box_list[box_index].width;
-        box_h = (lv_coord_t)box_list[box_index].height;
-
-        if (local_x < 0)
-        {
-            box_w = (lv_coord_t)((box_w > (lv_coord_t)(-local_x)) ? (box_w + local_x) : 0);
-            local_x = 0;
-        }
-        if (local_y < 0)
-        {
-            box_h = (lv_coord_t)((box_h > (lv_coord_t)(-local_y)) ? (box_h + local_y) : 0);
-            local_y = 0;
-        }
-        if ((local_x >= image_width) || (local_y >= image_height) || (box_w <= 0) || (box_h <= 0))
-        {
-            continue;
-        }
-        if ((local_x + box_w) > image_width)
-        {
-            box_w = (lv_coord_t)(image_width - local_x);
-        }
-        if ((local_y + box_h) > image_height)
-        {
-            box_h = (lv_coord_t)(image_height - local_y);
-        }
-        if ((box_w <= 0) || (box_h <= 0))
-        {
-            continue;
-        }
-
-        lv_draw_rect_dsc_init(&rect_dsc);
-        rect_dsc.bg_opa = LV_OPA_TRANSP;
-        rect_dsc.border_width = 3;
-        rect_dsc.border_opa = LV_OPA_COVER;
-        rect_dsc.border_color = lv_color_hex(box_list[box_index].border_color_rgb888);
-        rect_dsc.radius = 0;
-        lv_canvas_draw_rect(canvas, local_x, local_y, box_w, box_h, &rect_dsc);
-
-        if (box_list[box_index].label_text[0] != '\0')
-        {
-            lv_draw_rect_dsc_t label_bg_dsc;
-            lv_coord_t label_y = (local_y >= 22) ? (lv_coord_t)(local_y - 22) : local_y;
-
-            lv_draw_rect_dsc_init(&label_bg_dsc);
-            label_bg_dsc.bg_opa = LV_OPA_60;
-            label_bg_dsc.bg_color = lv_color_black();
-            label_bg_dsc.border_width = 1;
-            label_bg_dsc.border_opa = LV_OPA_COVER;
-            label_bg_dsc.border_color = lv_color_hex(box_list[box_index].border_color_rgb888);
-            label_bg_dsc.radius = 4;
-            lv_canvas_draw_rect(canvas, local_x, label_y, 84, 20, &label_bg_dsc);
-
-            lv_draw_label_dsc_init(&label_dsc);
-            label_dsc.color = lv_color_white();
-            label_dsc.font = &lv_font_montserratMedium_19;
-            label_dsc.align = LV_TEXT_ALIGN_LEFT;
-            lv_canvas_draw_text(canvas, local_x + 4, label_y + 2, 76, &label_dsc, box_list[box_index].label_text);
-        }
-    }
-}
 
 /**
  * @brief Draw all supported overlays onto the snapshot canvas.
@@ -813,7 +734,6 @@ static void thermal_gui_snapshot_draw_overlays(lv_obj_t *canvas,
                                                lv_obj_t *min_badge,
                                                lv_obj_t *max_marker,
                                                lv_obj_t *min_marker,
-                                               uint8_t fullscreen_mode,
                                                uint16_t image_width,
                                                uint16_t image_height)
 {
@@ -824,7 +744,6 @@ static void thermal_gui_snapshot_draw_overlays(lv_obj_t *canvas,
                                            thermal_gui_get_child_label_text(min_badge),
                                            image_width,
                                            image_height);
-    thermal_gui_snapshot_draw_ai_boxes(canvas, image_obj, fullscreen_mode);
     thermal_gui_snapshot_draw_marker_from_obj(canvas, image_obj, max_marker, "高");
     thermal_gui_snapshot_draw_marker_from_obj(canvas, image_obj, min_marker, "低");
 }
@@ -848,11 +767,10 @@ static UINT thermal_gui_snapshot_capture_from_objects(lv_obj_t *image_obj,
                                                       lv_obj_t *cross_v,
                                                       lv_obj_t *center_badge,
                                                       lv_obj_t *max_badge,
-                                                      lv_obj_t *min_badge,
-                                                      lv_obj_t *max_marker,
-                                                      lv_obj_t *min_marker,
-                                                      uint8_t fullscreen_mode,
-                                                      CHAR *saved_name_ptr,
+                                                       lv_obj_t *min_badge,
+                                                       lv_obj_t *max_marker,
+                                                       lv_obj_t *min_marker,
+                                                       CHAR *saved_name_ptr,
                                                       uint32_t saved_name_size)
 {
     const void *src_ptr;
@@ -897,11 +815,10 @@ static UINT thermal_gui_snapshot_capture_from_objects(lv_obj_t *image_obj,
                                        cross_v,
                                        center_badge,
                                        max_badge,
-                                       min_badge,
-                                       max_marker,
-                                       min_marker,
-                                       fullscreen_mode,
-                                       image_width,
+                                        min_badge,
+                                        max_marker,
+                                        min_marker,
+                                        image_width,
                                        image_height);
 
     return app_filex_snapshot_save_rgb565(g_snapshot_canvas_rgb565,
@@ -933,7 +850,6 @@ static UINT thermal_gui_snapshot_capture_preview(lv_ui *ui, CHAR *saved_name_ptr
                                                      ui->WidgetsDemo_preview_min_temp,
                                                      ui->WidgetsDemo_preview_max_marker,
                                                      ui->WidgetsDemo_preview_min_marker,
-                                                     0U,
                                                      saved_name_ptr,
                                                      saved_name_size);
 }
@@ -960,7 +876,6 @@ static UINT thermal_gui_snapshot_capture_fullscreen(lv_ui *ui, CHAR *saved_name_
                                                      ui->WidgetsDemo_fullscreen_preview_min_temp,
                                                      ui->WidgetsDemo_fullscreen_preview_max_marker,
                                                      ui->WidgetsDemo_fullscreen_preview_min_marker,
-                                                     1U,
                                                      saved_name_ptr,
                                                      saved_name_size);
 }

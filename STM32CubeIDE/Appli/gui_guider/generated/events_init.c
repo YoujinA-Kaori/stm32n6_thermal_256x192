@@ -444,7 +444,6 @@ static void thermal_gui_pseudo_event_cb(lv_event_t *e)
             if (tiny1c_vdcmd_set_pseudo_color(PREVIEW_PATH0, g_pseudo_map[mode_index_value].mode) == IR_SUCCESS)
             {
                 g_current_pseudo_index = (uint8_t)mode_index_value;
-                app_thermal_ai_set_preview_pseudo_mode((uint8_t)g_pseudo_map[mode_index_value].mode);
                 thermal_gui_refresh_pseudo_ui(&guider_ui, g_current_pseudo_index);
             }
         }
@@ -775,7 +774,6 @@ static void WidgetsDemo_event_handler(lv_event_t *e)
                     break;
                 }
             }
-            app_thermal_ai_set_preview_pseudo_mode(pseudo_mode);
         }
 
         lv_obj_clear_flag(ui->WidgetsDemo, LV_OBJ_FLAG_SCROLLABLE);

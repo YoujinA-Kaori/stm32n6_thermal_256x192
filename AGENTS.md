@@ -1297,3 +1297,161 @@ Likely next task in the next conversation:
 
 - `STM32CubeIDE/Appli/Release` 下执行 `mingw32-make all -j2` 已通过。
 - 原有 `_close/_read/_write` 等 nosys 警告和 `libirtemp wchar_t` 警告仍存在，但不阻塞链接和产物生成。
+
+## 2026-07-13 双摄融合、RIF 与正式交付审计
+
+### 当前双摄架构
+
+- Tiny1C 热成像链路保持独立：
+  - `Tiny1C -> DCMI/PSSI -> HPDMA1 Channel15`
+  - 仍使用连续采集，不占用 DCMIPP。
+- IMX219 可见光链路为：
+  - `IMX219 -> CSI-2 -> DCMIPP Pipe1 -> RGB565`
+  - 使用两个 `640x480 RGB565` EXTRAM 缓冲做硬件双缓冲。
+- 两路相机没有争抢同一个采集外设：
+  - 热成像走 DCMI
+  - 可见光走 CSI/DCMIPP
+- DCMIPP 帧回调只发布已完成帧的地址、帧号和时间戳；缓存失效、融合、AE/AWB 和故障恢复都留在线程上下文中执行。
+- IMX219 使用低优先级线程：
+  - 启动延时：`2000 ms`
+  - 配置帧率：`15 fps`
+  - AE/AWB 周期：`1000 ms`
+  - 无帧看门狗：`1500 ms`
+  - CSI/DCMIPP 出错后延迟恢复，不在中断内访问 I2C。
+
+### IMX219 当前硬件与 sensor 配置
+
+- 模组使用板载 `24 MHz` 晶振，不需要 MCU 额外输出 XCLK。
+- sensor 参数：
+  - I2C 7-bit 地址：`0x10`
+  - Chip ID：`0x0219`
+  - CSI-2 RAW10
+  - 2 lane
+  - 输出：`640x480`
+  - 目标帧率：`15 fps`
+- DCMIPP 当前配置：
+  - Pipe1
+  - VC0
+  - 10 bpp
+  - RGGB demosaic
+  - RGB565 输出
+- 控制总线仍为共享硬件 `I2C4`：
+  - `PE13 -> I2C4_SCL`
+  - `PE14 -> I2C4_SDA`
+  - 与 Tiny1C、BQ27441/EEPROM 共用。
+- IMX219 每次寄存器访问使用 I2C4 总线互斥，有限等待 `20 ms`；后台 AE 总线忙时跳过本轮，避免长期阻塞 Tiny1C 的伪彩、增益和 FFC 控制。
+- 额外 GPIO：
+  - `PG6 -> CAM_EN_MODULE`
+  - `PG4 -> CAM_LED_EN`，默认保持关闭。
+
+### 三种显示模式与现场校准
+
+- 当前 GUI 已接入：
+  - `IR`：单热成像
+  - `VIS`：单可见光
+  - `MIX`：热成像与可见光融合
+- 混合模式下可以现场调节可见光层：
+  - X/Y 平移
+  - 50%~200% 缩放
+  - `-10°~+10°` 旋转
+  - 镜像
+  - 翻转
+  - 可见光透明度
+- 当前融合算法采用：
+  - 整数/定点反向仿射映射
+  - 最近邻采样
+  - RGB565 定点加权混合
+  - 不使用浮点、不动态分配内存。
+- 融合只在相关相机出现新帧或参数变化时重新计算，不在 GUI 的每个 `5 ms` 循环里无条件重复整帧处理。
+- 热成像帧使用奇偶序列保护；可见光使用双缓冲完成地址、帧号和时间戳快照。
+- 融合允许的双摄时间差上限为 `50 ms`；超出时等待下一帧，不混合明显不同步的画面。
+- 当前保留性能诊断变量：
+  - `g_camera_render_last_ms`
+  - `g_camera_render_max_ms`
+  - `g_camera_sync_last_skew_ms`
+  - `g_camera_sync_max_skew_ms`
+  - 同步等待/丢弃计数。
+- 校准参数目前只在 RAM 中实时生效，尚未写死或持久化；现场校准完成后再把最终参数固化。
+
+### RIF 权限当前结论
+
+- IOC 与 `main.c::SystemIsolation_Config()` 已同步补齐双摄和现有业务链所需权限。
+- 当前关键配置包括：
+  - DCMIPP RIMU：CID1
+  - NPU RIMU：CID1、Secure、Privileged
+  - GPDMA1 Channel0：Application/CID1/Secure/Privileged
+  - HPDMA1 Channel15：Application/CID1/Secure/Privileged
+  - `PE13/PE14/PG4/PG6`：Application/CID1/Secure
+  - RISUP Privileged：CSI2HOST、DCMI、DCMIPP、I2C4、NPU、TIM7、XSPI1、XSPI2、XSPIM、DMA2D、LTDC、SDMMC2、USART1 等。
+- DCMIPP 直接写 EXTRAM 时使用的 master CID/secure/privileged 配置已经保留。
+- 如果以后用 CubeMX 重新生成，必须复核这些 RIF 项，不能只看外设是否显示为绿色。
+- 当前 IOC 由 CubeMX `6.17.0` 保存，不要使用本机较旧的 `6.14` 直接生成覆盖，否则存在版本降级及 CSI/DCMIPP 人工收口代码被冲掉的风险。
+
+### 2026-07-13 构建与资源核验
+
+- 由于当前 CubeIDE 生成的 Windows `make clean` 删除规则不能可靠清理所有对象，本次使用：
+  - `mingw32-make -B -f makefile all -j2`
+  强制重新编译所有目标。
+- Debug 与 Release 都已全量编译、链接成功，无 error。
+- Release `size`：
+  - text：`432204`
+  - data：`672`
+  - bss：`7456224`
+- `.EXTRAM` 实际占用：`7161216 byte`，约 `6.83 MiB / 32 MiB`。
+- 最大单函数静态栈用量约 `1264 byte`；最小业务线程栈为 `2048 byte`，当前未发现编译期明显栈溢出风险。
+- 本次确认的 Release 应用镜像：
+  - `STM32CubeIDE/Appli/Release/stm32n6_thermal_256x192_Appli.hex`
+  - SHA-256：`C61EA41D0B227C69B47951FD5AA95797B80C9FB7C74C1E916304ECFAEA329478`
+
+### 当前交付阻断与已知风险
+
+1. **不要直接把根目录 `Binary/appli.hex` 当成本次 Release。**
+   - `STM32CubeIDE/Appli/postbuild.ps1` 会递归搜索 Debug/Release 下所有 `*_Appli.bin`，然后选择最后修改的文件。
+   - 2026-07-13 审计时，`Binary/appli.hex` 的有效载荷与 Debug bin 完全一致，不是本次 Release bin。
+   - 后续必须把 post-build 改为显式接收当前配置的输入文件，或至少固定读取 `Release` 目录；修复前每次烧录都要核对来源和哈希。
+2. **仓库当前不包含可复现的 FSBL 冷启动链。**
+   - IOC 的工程结构中 `FSBL` 为关闭状态。
+   - 仓库没有 FSBL 工程或 FSBL 二进制。
+   - Release 使用 `ROMxspi2 + RAMxspi1`，且应用只在 `DEBUG` 下自行初始化系统时钟、XSPI1 和 HyperRAM。
+   - 因此 Release 冷启动依赖板上已经存在并兼容的 FSBL；若没有，单独烧录 Application 不能构成完整启动包。
+3. Debug 生成目录的旧 makefile 仍使用旧产物名 `stm32n6_thermal_Appli`，而工程与 launch 配置使用 `stm32n6_thermal_256x192_Appli`。
+   - 不要手改最终生成目录收口。
+   - 后续应在 CubeIDE Refresh/重新生成工程级 makefile 后验证 Debug 启动。
+4. `AppCameraIMX219_SetExposure()` 当前忽略 Group Hold 开始/释放写入的返回值，且每次寄存器写会分别获取 I2C4 mutex。
+   - 正常工作时风险较低。
+   - I2C 瞬态失败时可能出现一次未成组更新，极端情况下可能留下 Group Hold 未释放；量产前应做一次原子化修正。
+5. 当前尚未完成：
+   - 将现场校准参数写死或持久化
+   - 可见光 YOLOv8 模型接入
+   - 双摄长期运行、融合实际帧率和热成像帧率不下降的上板量化验收。
+
+### 双摄上板验收标准
+
+- 冷启动至少连续测试 3 次，确认由实际部署的 FSBL 正常进入 Application。
+- IMX219：
+  - `g_imx219_runtime_chip_id == 0x0219`
+  - `g_imx219_runtime_status == APP_CAMERA_IMX219_OK`
+  - 帧计数约 `14~16 fps`
+  - CSI/DCMIPP error/recovery 计数不持续增长。
+- 融合：
+  - `g_camera_sync_last_skew_ms <= 50`
+  - `g_camera_render_last_ms` 通常低于一帧周期约 `66 ms`
+  - 画面移动、缩放、旋转、镜像、翻转、透明度调节均实时生效。
+- Tiny1C：
+  - 10 秒帧计数与接入 IMX219 前的基准基本一致
+  - 伪彩、增益、FFC 连续操作至少 20 次，不需要重复点击。
+- 旧功能回归：
+  - 触摸与 GUI
+  - 中心/最高/最低温度与标记
+  - UART 2 Mbps、128x96、5 fps temp14 流
+  - 截图、图库、删除、串口导出
+  - BQ27441 电池状态。
+- `IR/VIS/MIX` 三种模式分别连续运行至少 10 分钟后，才能把“全部功能正常”从静态确认升级为实机确认。
+
+### 对后续 Agent 的强提醒
+
+1. 热成像继续保留 DCMI/HPDMA 路径，不要为了可见光重新把 Tiny1C 搬回 DCMIPP。
+2. 不要删除可见光帧的 D-Cache invalidate，也不要在 DCMIPP/CSI 中断中执行 I2C、AE/AWB 或重新初始化。
+3. 不要用“编译成功”替代双摄帧率、同步误差和控制响应的实机测量。
+4. 修复发布脚本前，不要默认 `Binary/appli.hex` 就是 Release；必须核对 payload 来源或哈希。
+5. 若板子没有兼容 FSBL，先补完整启动链，再讨论 Release 冷启动是否正常。

@@ -19,6 +19,11 @@
 - 输出：CSI-2 RAW10，2-lane（`CSI_LANE_MODE=0x01`）
 - 输入时钟：24 MHz；I2C 7-bit 地址 `0x10`；Chip ID `0x0219`
 
+工程应用层带 Pipe1 启动回滚、CSI/管线错误恢复和 1.5 s 无帧看门狗。错误回调只记录状态，
+停流、CSI 复位和重新初始化均在低优先级 ThreadX 线程执行，不在中断中访问 I2C。
+可通过 SWD 查看 `g_imx219_recovery_count`、`g_imx219_error_count` 和
+`g_imx219_last_error_detail`。
+
 ## 一、sensor 驱动 API（`app_camera_imx219.h`）
 
 ```c
@@ -87,7 +92,7 @@ AppCameraISP_RunAutoWhiteBalance(&hdcmipp, DCMIPP_PIPE1, st.r_avg8, st.g_avg8, s
    `SetISPBlackLevelCalibrationConfig` / `EnableISPBlackLevelCalibration` /
    `EnableGammaConversion`。
 2. 工程现有 `i2c.h`：`app_i2c4_bus_lock_timeout` / `app_i2c4_bus_unlock`。
-3. ThreadX（`app_i2c2_bus.c` 用 `tx_mutex_*`）。
+3. ThreadX（`i2c.c` 中的 I2C4 共享总线锁使用 `tx_mutex_*`）。
 
 > 当前驱动以 20 ms 有限等待访问共享 I2C4。后台 AE 若遇到总线忙应跳过本轮，
 > 避免阻塞 Tiny1C 的伪彩、增益和 FFC 控制。
