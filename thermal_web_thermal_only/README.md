@@ -5,7 +5,7 @@ STM32N6 热成像串口网页上位机。
 ## 启动
 
 ```powershell
-python thermal_web/app.py
+python thermal_web_thermal_only/app.py
 ```
 
 浏览器打开：

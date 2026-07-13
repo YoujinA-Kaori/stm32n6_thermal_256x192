@@ -104,8 +104,8 @@ typedef struct
 #define CFG_UART_COMMAND_LINE_MAX             96U
 #define CFG_UART_COMMAND_RX_RING_SIZE          128U
 #define CFG_UART_COMMAND_RX_RING_MASK          (CFG_UART_COMMAND_RX_RING_SIZE - 1U)
-#define CFG_UART_COMMAND_TX_LINE_MAX          768U
-#define CFG_UART_FILE_BASE64_CHUNK_BYTES      384U
+#define CFG_UART_COMMAND_TX_LINE_MAX          2304U
+#define CFG_UART_FILE_BASE64_CHUNK_BYTES      1536U
 #define CFG_UART_FILE_BASE64_CHUNK_TEXT       (((CFG_UART_FILE_BASE64_CHUNK_BYTES + 2U) / 3U) * 4U)
 #define CFG_UART_FILE_MAX_LISTED_SNAPSHOTS    32U
 #define CFG_UART_FILE_NAME_STRIDE             CFG_APP_FILEX_SNAPSHOT_NAME_LEN
@@ -2930,6 +2930,19 @@ static void app_threadx_uart_file_hold_clear(uint32_t hold_mask)
 }
 
 /**
+  * @brief  Extend the Web file-mode inactivity deadline during an active transfer.
+  * @retval None
+  */
+static void app_threadx_uart_file_web_timeout_refresh(void)
+{
+  if ((g_uart_file_hold_mask & APP_UART_FILE_HOLD_WEB) != 0U)
+  {
+    g_uart_web_file_hold_expire_tick = tx_time_get() +
+      ((CFG_UART_FILE_WEB_TIMEOUT_TICKS > 0U) ? CFG_UART_FILE_WEB_TIMEOUT_TICKS : 1U);
+  }
+}
+
+/**
   * @brief  Wait until any in-flight UART DMA transmission completes.
   * @retval None
   */
@@ -3146,6 +3159,7 @@ static UINT app_threadx_uart_send_snapshot_named(const CHAR *file_name_ptr)
       return status;
     }
 
+    app_threadx_uart_file_web_timeout_refresh();
     payload_offset += chunk_bytes;
     sequence++;
   }
@@ -3223,7 +3237,7 @@ static void app_threadx_uart_process_command_line(const uint8_t *command_line_pt
       (strncmp(command_ptr, "FILE_GET ", 9) == 0))
   {
     app_threadx_uart_file_hold_set(APP_UART_FILE_HOLD_WEB);
-    g_uart_web_file_hold_expire_tick = tx_time_get() + ((CFG_UART_FILE_WEB_TIMEOUT_TICKS > 0U) ? CFG_UART_FILE_WEB_TIMEOUT_TICKS : 1U);
+    app_threadx_uart_file_web_timeout_refresh();
   }
 
   if (strcmp(command_ptr, "FILE_LIST") == 0)
