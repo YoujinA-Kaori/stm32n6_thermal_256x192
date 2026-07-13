@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import binascii
 import json
 import logging
 import os
@@ -168,6 +169,7 @@ class FrameHub:
         self._baud_rate = DEFAULT_BAUD
         self._reader_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._protocol_rx_buffer = bytearray()
 
     def configure(self, serial_port: str, baud_rate: int) -> None:
         """Configure the serial source."""
@@ -366,21 +368,27 @@ class FrameHub:
 
     def _flush_input(self, ser: "serial.Serial", settle_seconds: float = 0.12) -> None:
         """Drop any buffered bytes before starting a file transaction."""
+        self._protocol_rx_buffer.clear()
         ser.reset_input_buffer()
         time.sleep(settle_seconds)
         ser.reset_input_buffer()
+        self._protocol_rx_buffer.clear()
 
     def _read_ascii_line(self, ser: "serial.Serial", timeout_seconds: float = 5.0) -> str:
-        """Read one newline-terminated ASCII line from the MCU."""
-        deadline = time.time() + timeout_seconds
-        line_buffer = bytearray()
-        while time.time() < deadline:
-            next_byte = ser.read(1)
-            if not next_byte:
-                continue
-            line_buffer.extend(next_byte)
-            if next_byte == b"\n":
-                return line_buffer.decode("ascii", errors="ignore").strip()
+        """Read one newline-terminated ASCII line using buffered serial chunks."""
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            newline_index = self._protocol_rx_buffer.find(b"\n")
+            if newline_index >= 0:
+                line_bytes = bytes(self._protocol_rx_buffer[:newline_index + 1])
+                del self._protocol_rx_buffer[:newline_index + 1]
+                return line_bytes.decode("ascii", errors="ignore").strip()
+
+            waiting_bytes = int(getattr(ser, "in_waiting", 0) or 0)
+            read_size = min(max(waiting_bytes, 1), 4096)
+            chunk = ser.read(read_size)
+            if chunk:
+                self._protocol_rx_buffer.extend(chunk)
         raise TimeoutError("串口命令超时")
 
     def _read_protocol_line(
@@ -390,9 +398,16 @@ class FrameHub:
         timeout_seconds: float = 5.0,
     ) -> str:
         """Read one MCU protocol line while ignoring binary stream residue."""
-        deadline = time.time() + timeout_seconds
-        while time.time() < deadline:
-            line = self._read_ascii_line(ser, timeout_seconds=max(0.2, min(1.0, deadline - time.time())))
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            remaining_seconds = deadline - time.monotonic()
+            try:
+                line = self._read_ascii_line(
+                    ser,
+                    timeout_seconds=max(0.2, min(1.0, remaining_seconds)),
+                )
+            except TimeoutError:
+                continue
             if not line:
                 continue
             if any(line.startswith(prefix) for prefix in accepted_prefixes):
@@ -423,7 +438,7 @@ class FrameHub:
                     bytesize=8,
                     parity="N",
                     stopbits=1,
-                    timeout=1.0,
+                    timeout=0.2,
                     write_timeout=2.0,
                 ) as ser:
                     self._flush_input(ser)
@@ -486,6 +501,7 @@ class FrameHub:
                 def session(ser: "serial.Serial") -> dict[str, object]:
                     self._ensure_ok_response(ser, "FILE_ENTER")
                     try:
+                        transfer_started = time.monotonic()
                         self._send_ascii_command(ser, command_text)
                         line = self._read_protocol_line(ser, ("FILE_BEGIN ", "ERR "), timeout_seconds=15.0)
                         if line.startswith("ERR "):
@@ -501,10 +517,16 @@ class FrameHub:
                         width = int(parts[2])
                         height = int(parts[3])
                         payload_size = int(parts[4])
-                        payload_bytes = bytearray()
-                        expected_chunks = (payload_size + 383) // 384
+                        expected_payload_size = width * height * 2
+                        if (payload_size != expected_payload_size):
+                            raise RuntimeError(
+                                f"文件头尺寸不匹配: got {payload_size}, want {expected_payload_size}"
+                            )
+                        payload_bytes = bytearray(payload_size)
+                        payload_offset = 0
+                        expected_sequence = 0
 
-                        for _ in range(expected_chunks):
+                        while payload_offset < payload_size:
                             line = self._read_protocol_line(ser, ("DATA ", "ERR "), timeout_seconds=10.0)
                             if line.startswith("ERR "):
                                 raise RuntimeError(line)
@@ -514,7 +536,24 @@ class FrameHub:
                             payload_parts = line.split(" ", 2)
                             if len(payload_parts) != 3:
                                 raise RuntimeError(f"数据包字段不完整: {line}")
-                            payload_bytes.extend(base64.b64decode(payload_parts[2]))
+
+                            try:
+                                sequence = int(payload_parts[1])
+                                chunk_bytes = base64.b64decode(payload_parts[2], validate=True)
+                            except (ValueError, binascii.Error) as exc:
+                                raise RuntimeError(f"数据包解码失败: {exc}") from exc
+                            if sequence != expected_sequence:
+                                raise RuntimeError(
+                                    f"数据包序号异常: got {sequence}, want {expected_sequence}"
+                                )
+                            if not chunk_bytes:
+                                raise RuntimeError("收到空的数据包")
+                            if (payload_offset + len(chunk_bytes)) > payload_size:
+                                raise RuntimeError("数据包长度超过文件头声明")
+
+                            payload_bytes[payload_offset:payload_offset + len(chunk_bytes)] = chunk_bytes
+                            payload_offset += len(chunk_bytes)
+                            expected_sequence += 1
 
                         line = self._read_protocol_line(ser, ("FILE_END", "ERR "), timeout_seconds=10.0)
                         if line.startswith("ERR "):
@@ -522,12 +561,21 @@ class FrameHub:
                         if line != "FILE_END":
                             raise RuntimeError(f"文件结束标记异常: {line}")
 
-                        if len(payload_bytes) != payload_size:
-                            raise RuntimeError(f"文件长度不匹配: got {len(payload_bytes)}, want {payload_size}")
+                        if payload_offset != payload_size:
+                            raise RuntimeError(f"文件长度不匹配: got {payload_offset}, want {payload_size}")
 
                         bmp_bytes = build_rgb565_bmp_bytes(width, height, bytes(payload_bytes))
                         save_path = pick_unique_download_path(file_name)
                         save_path.write_bytes(bmp_bytes)
+                        elapsed_seconds = time.monotonic() - transfer_started
+                        LOGGER.info(
+                            "downloaded %s (%sx%s, %s bytes) in %.2f s",
+                            file_name,
+                            width,
+                            height,
+                            payload_size,
+                            elapsed_seconds,
+                        )
 
                         return {
                             "file_name": file_name,
@@ -537,6 +585,7 @@ class FrameHub:
                             "saved_name": save_path.name,
                             "saved_path": str(save_path),
                             "download_url": f"/downloads/{save_path.name}",
+                            "elapsed_seconds": round(elapsed_seconds, 2),
                         }
                     finally:
                         try:

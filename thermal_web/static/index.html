@@ -86,6 +86,7 @@
       <div class="actions">
         <button id="pauseBtn" class="secondary">暂停</button>
         <button id="shotBtn">截图</button>
+        <button id="analyzeBtn" disabled>热场分析</button>
       </div>
     </aside>
 
@@ -96,13 +97,54 @@
       <div class="footer-bar">
         <div class="legend">
           <span>低</span>
-          <div class="legend-strip"></div>
+          <div class="legend-strip" id="legendStrip"></div>
           <span>高</span>
         </div>
-        <div class="hint">下载 SD 图像时，实时流会暂时暂停</div>
+        <div class="hint">热场分析会冻结点击时的当前显示帧</div>
       </div>
     </main>
   </div>
+
+  <section class="analysis-overlay hidden" id="analysisOverlay" role="dialog" aria-modal="true" aria-labelledby="analysisTitle">
+    <div class="analysis-dialog">
+      <header class="analysis-header">
+        <div>
+          <div class="analysis-kicker">FRAME SNAPSHOT</div>
+          <h2 id="analysisTitle">3D 热场分析</h2>
+          <p>图像 X/Y 坐标构成底面，温度越高，Z 轴越高。</p>
+        </div>
+        <div class="analysis-actions">
+          <button id="analysisResetBtn" class="secondary">复位视角</button>
+          <button id="analysisRecaptureBtn">重新截取</button>
+          <button id="analysisCloseBtn" class="secondary">关闭</button>
+        </div>
+      </header>
+
+      <div class="analysis-meta">
+        <div><span>帧号</span><strong id="analysisFrame">-</strong></div>
+        <div><span>原始分辨率</span><strong id="analysisResolution">-</strong></div>
+        <div><span>曲面采样</span><strong id="analysisSample">-</strong></div>
+        <div><span>最低温</span><strong id="analysisMin">-</strong></div>
+        <div><span>最高温</span><strong id="analysisMax">-</strong></div>
+        <div><span>伪彩温标</span><strong id="analysisRange">-</strong></div>
+        <div><span>伪彩模式</span><strong id="analysisPalette">-</strong></div>
+        <div><span>截取时间</span><strong id="analysisCaptureTime">-</strong></div>
+      </div>
+
+      <div class="analysis-stage">
+        <canvas id="analysisCanvas" aria-label="可拖动的三维热场曲面"></canvas>
+      </div>
+
+      <footer class="analysis-footer">
+        <div class="legend analysis-legend">
+          <span id="analysisLegendLow">低</span>
+          <div class="legend-strip" id="analysisLegendStrip"></div>
+          <span id="analysisLegendHigh">高</span>
+        </div>
+        <div class="hint">拖动旋转 · 滚轮缩放 · 双击复位 · 曲面颜色跟随当前伪彩与温标</div>
+      </footer>
+    </div>
+  </section>
 
   <script src="/static/main.js"></script>
 </body>
