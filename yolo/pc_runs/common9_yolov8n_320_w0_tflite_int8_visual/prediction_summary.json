@@ -1,0 +1,35 @@
+{
+  "model": "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\pc_runs\\common9_yolov8n_320_w0\\weights\\best_saved_model\\best_full_integer_quant.tflite",
+  "imgsz": 320,
+  "confidence": 0.35,
+  "iou": 0.55,
+  "prediction_contact_sheet": "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\pc_runs\\common9_yolov8n_320_w0_tflite_int8_visual\\prediction_contact_sheet.jpg",
+  "samples": [
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\00055__1024__4944___2472.png",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_544.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\inductor13.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_536.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_306.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_1.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_346.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_91.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\00001__1024__2472___4120.png",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\00020__1024__4116___2472.png",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\00020__1024__824___2472.png",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\Virtex6.jpg"
+  ],
+  "detection_counts": [
+    0,
+    0,
+    1,
+    1,
+    6,
+    12,
+    5,
+    19,
+    36,
+    31,
+    49,
+    14
+  ]
+}

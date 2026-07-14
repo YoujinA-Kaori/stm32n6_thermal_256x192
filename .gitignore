@@ -98,3 +98,12 @@ thermal_atonbuf.xSPI2.raw
 # Optional large local data
 # Uncomment if you do not want to upload datasets
 thermal_ai_dataset/
+
+# Visible-light YOLO local datasets, environments and generated runs
+/yolo/PCB-dataset/
+/yolo/PCB-dataset-common9/
+/yolo/yolov8训练结果/
+/yolo/pc_pipeline/.pip-cache/
+/yolo/pc_pipeline/.tmp/
+/yolo/pc_runs/
+/yolo11n.pt

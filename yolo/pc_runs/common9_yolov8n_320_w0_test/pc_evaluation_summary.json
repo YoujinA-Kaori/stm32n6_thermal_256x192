@@ -1,0 +1,82 @@
+{
+  "weights": "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\pc_runs\\common9_yolov8n_320_w0\\weights\\best.pt",
+  "dataset": "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\dataset.yaml",
+  "split": "test",
+  "imgsz": 320,
+  "precision": 0.7086305544405682,
+  "recall": 0.414341517854505,
+  "map50": 0.4658487242606224,
+  "map75": 0.2615367505639766,
+  "map50_95": 0.26077750205606876,
+  "per_class": {
+    "capacitor": {
+      "precision": 0.7769154096684904,
+      "recall": 0.28913208531544593,
+      "map50": 0.40046623148263955,
+      "map50_95": 0.21746551306490525
+    },
+    "resistor": {
+      "precision": 0.7772107364197174,
+      "recall": 0.4246153846153846,
+      "map50": 0.49845589292044756,
+      "map50_95": 0.27684378434185397
+    },
+    "ic": {
+      "precision": 0.7069797901482439,
+      "recall": 0.5836575875486382,
+      "map50": 0.6114942655999585,
+      "map50_95": 0.36976637347620306
+    },
+    "connector": {
+      "precision": 0.7119664205293981,
+      "recall": 0.4166666666666667,
+      "map50": 0.48771433529071406,
+      "map50_95": 0.2863057148384451
+    },
+    "diode": {
+      "precision": 0.7219557413608864,
+      "recall": 0.45054945054945056,
+      "map50": 0.4884789216077523,
+      "map50_95": 0.2821449068017151
+    },
+    "transistor": {
+      "precision": 0.7589978262769722,
+      "recall": 0.36818318000782535,
+      "map50": 0.43433485178925446,
+      "map50_95": 0.17508378403073488
+    },
+    "led": {
+      "precision": 0.6555074627913013,
+      "recall": 0.286305717771311,
+      "map50": 0.3083952938796948,
+      "map50_95": 0.1446886673101448
+    },
+    "inductor": {
+      "precision": 0.5520609272885963,
+      "recall": 0.19298245614035087,
+      "map50": 0.22570014502433144,
+      "map50_95": 0.16379398992859345
+    },
+    "switch": {
+      "precision": 0.7160806754815077,
+      "recall": 0.7169811320754716,
+      "map50": 0.7375985807508093,
+      "map50_95": 0.4309047847120234
+    }
+  },
+  "prediction_contact_sheet": "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\pc_runs\\common9_yolov8n_320_w0_test\\prediction_contact_sheet.jpg",
+  "prediction_samples": [
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\00055__1024__4944___2472.png",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_544.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\inductor13.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_536.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_306.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_1.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_346.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\PCBA_91.jpg",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\00001__1024__2472___4120.png",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\00020__1024__4116___2472.png",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\00020__1024__824___2472.png",
+    "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\PCB-dataset-common9\\test\\images\\Virtex6.jpg"
+  ]
+}

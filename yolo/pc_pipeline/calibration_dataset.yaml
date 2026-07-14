@@ -1,0 +1,15 @@
+path: "D:/PracticeProject/Stm32/stm32n6_thermal_256x192/yolo/PCB-dataset-common9"
+train: train/images
+val: train/images
+test: test/images
+
+names:
+  0: capacitor
+  1: resistor
+  2: ic
+  3: connector
+  4: diode
+  5: transistor
+  6: led
+  7: inductor
+  8: switch

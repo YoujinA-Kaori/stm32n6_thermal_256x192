@@ -1455,3 +1455,189 @@ Likely next task in the next conversation:
 3. 不要用“编译成功”替代双摄帧率、同步误差和控制响应的实机测量。
 4. 修复发布脚本前，不要默认 `Binary/appli.hex` 就是 Release；必须核对 payload 来源或哈希。
 5. 若板子没有兼容 FSBL，先补完整启动链，再讨论 Release 冷启动是否正常。
+
+## 2026-07-14 可见光 YOLOv8 PC 闭环与 STM32N6 资源分析
+
+### 当前模型与类别
+
+- 当前可见光检测模型为 `YOLOv8n detect`，输入尺寸 `320x320`。
+- 当前保留 9 类 PCB 常见器件，顺序固定为：
+  1. `capacitor`
+  2. `resistor`
+  3. `ic`
+  4. `connector`
+  5. `diode`
+  6. `transistor`
+  7. `led`
+  8. `inductor`
+  9. `switch`
+- 模型参数量约 `3.01 M`，检测输出张量为 `1x13x2100`：
+  - 前 4 通道为框坐标
+  - 后 9 通道为类别分数
+  - 共有 `2100` 个候选框
+- 当前 PT 权重：
+  - `yolo/pc_runs/common9_yolov8n_320_w0/weights/best.pt`
+
+### 摄像头、屏幕与模型输入格式
+
+- IMX219 传感器在线路侧输出 `640x480 CSI-2 RAW10`。
+- 当前 DCMIPP Pipe1 完成 RAW10 demosaic，并通过 Pixel Packer 输出 `RGB565`。
+- 可见光双缓冲：
+  - `g_imx219_rgb565_frame_a[]`
+  - `g_imx219_rgb565_frame_b[]`
+- LCD/LVGL 也是 RGB565：
+  - `LV_COLOR_DEPTH == 16`
+  - LTDC layer 为 `LTDC_PIXEL_FORMAT_RGB565`
+- 因此“应用层摄像头帧”和“屏幕帧”都是 RGB565，但模型输入不是打包的 RGB565。
+- 当前 Full INT8 TFLite 输入为：
+  - shape：`1x320x320x3`，NHWC
+  - dtype：`int8`
+  - scale：`1/255`
+  - zero point：`-128`
+- 后续板端前处理应在一次循环中融合完成：
+  - `640x480 RGB565` 裁剪/缩放到 `320x320`
+  - RGB565 解包为 R/G/B
+  - 每通道减 `128` 写入 INT8 输入
+- 不要先额外生成完整 RGB888 中间帧；直接写模型输入缓冲，避免额外约 `300 KiB` 缓冲和一次整帧拷贝。
+- 后处理检测框继续直接画回 RGB565 GUI 缓冲。
+
+### 已生成 TFLite
+
+- TFLite 输出目录：
+  - `yolo/pc_runs/common9_yolov8n_320_w0/weights/best_saved_model/`
+- 重点文件：
+  - `best_float32.tflite`：约 `11.61 MiB`，float32 输入/输出
+  - `best_float16.tflite`：约 `5.86 MiB`，float32 输入/输出
+  - `best_full_integer_quant.tflite`：约 `3.00 MiB`，int8 输入/输出
+  - `best_integer_quant.tflite`：内部量化，但 float32 输入/输出
+- STM32N6 当前优先候选仍是：
+  - `best_full_integer_quant.tflite`
+- PC 导出/检查脚本：
+  - `yolo/pc_pipeline/export_tflite_int8.py`
+  - `yolo/pc_pipeline/inspect_tflite.py`
+  - `yolo/pc_pipeline/validate_tflite.py`
+
+### PC 独立测试集精度
+
+- 独立 test 集：`122` 张图，`3770` 个目标。
+- PT `best.pt`：
+  - Precision：`0.7086`
+  - Recall：`0.4143`
+  - mAP50：`0.4658`
+  - mAP50-95：`0.2608`
+- Float32 TFLite：
+  - Precision：`0.6991`
+  - Recall：`0.4051`
+  - mAP50：`0.4598`
+  - mAP50-95：`0.2545`
+- Full INT8 TFLite：
+  - Precision：`0.5549`
+  - Recall：`0.3606`
+  - mAP50：`0.3787`
+  - mAP50-95：`0.1805`
+- 结论：
+  - PT -> Float32 TFLite 基本无明显精度损失，说明 TFLite 图转换正确。
+  - 明显掉点发生在 INT8 PTQ 阶段，不是 TFLite 格式本身造成。
+  - 当前 Full INT8 还不适合直接作为最终板端模型，应先继续改善校准或采用 QAT。
+  - 仅把 INT8 输出包装成 float32 不会恢复内部量化造成的精度损失。
+
+### STM32N6 Neural-ART 分析结果
+
+- 已使用本机 `X-CUBE-AI 10.2.0 / ST Edge AI Core 2.2.0` 对 Full INT8 TFLite 执行 `stm32n6 + Neural-ART` analyze。
+- 模型可以成功通过 Neural-ART 编译，没有算子级硬阻断。
+- 分析报告：
+  - `yolo/pc_runs/stedgeai_analysis/full_int8_out/network_analyze_report.txt`
+- 资源结果：
+  - 权重：`3,052,257 byte`，约 `2.91 MiB`
+  - 激活总量：`4,243,456 byte`，约 `4.05 MiB`
+  - 模型输入：`300 KiB`
+  - 模型输出：约 `26.66 KiB`
+  - 执行 epoch：`412`
+  - 软件 epoch：`16`
+- 默认 profile 的激活分布：
+  - cpuRAM2：`800 KiB / 1 MiB`，占 `78.12%`
+  - npuRAM3：`448 KiB / 448 KiB`，占 `100%`
+  - npuRAM4：`448 KiB / 448 KiB`，占 `100%`
+  - npuRAM5：`448 KiB / 448 KiB`，占 `100%`
+  - npuRAM6：`400 KiB / 448 KiB`，占 `89.29%`
+  - HyperRAM：`1.562 MiB / 32 MiB`
+- 当前硬件从总容量看足以支持该模型，但内部 NPU SRAM 已经偏紧。
+
+### 与当前固件的内存布局冲突
+
+- 当前 Debug `.map` 中：
+  - 通用内部 RAM 总量约 `2047 KiB`
+  - 当前已用约 `978.3 KiB`
+  - 当前剩余约 `1068.7 KiB`
+- 新模型默认还需要 cpuRAM2 固定占用 `800 KiB`。
+- 新网络调度代码/只读表明显大于当前 `160x120` 热模型；若继续使用当前 LRUN、把全部 `.text/.rodata` 放内部 RAM，直接替换可能发生空间不足或与 cpuRAM2 激活区碰撞。
+- 部署时优先考虑：
+  - 将新网络 schedule/只读数据放到外部 Flash/XIP 区域
+  - 或使用自定义 Neural-ART memory pool，把更多激活放入 HyperRAM
+  - 不要假设 CubeAI 默认 memory profile 能直接和当前链接脚本共存
+- 当前 `.EXTRAM` 已用 `6.83 MiB / 32 MiB`，加上模型 HyperRAM 激活约为 `8.39 MiB`，容量仍充裕。
+- 但 Neural-ART 默认把 HyperRAM 激活从 `0x90000000` 开始分配，会和当前 `.EXTRAM` 直接重叠。
+- 后续 CubeAI Studio 配置必须移动模型 HyperRAM pool，例如从 `0x90700000` 之后开始，或由最终链接符号统一划分，不能照搬默认地址。
+- 32 MiB 外部 Flash 容量足够；建议为模型权重和相关生成物预留至少连续 `4 MiB`，并与应用、FSBL、现有 atonbuf 分区明确隔离。
+
+### 当前下一步
+
+1. 暂不替换板端旧模型，也不改 `app_threadx.c` 的 AI 接口。
+2. 继续在 PC 上优化 INT8：
+   - 先确认代表性校准集的真实覆盖范围与预处理是否和验证一致
+   - 对比不同校准集/量化方案
+   - 若 PTQ 仍明显掉点，转向 QAT 或量化友好的检测头
+3. 只有 INT8 精度达到可接受水平后，再进入 CubeAI Studio 转换和板端替换。
+4. 最终帧率必须通过真实 STM32N6 benchmark/上板测量确认；静态 analyze 只能证明可编译和资源可安排，不能替代运行时间结论。
+
+### 2026-07-14 INT8 量化补充实验
+
+- 已确认 Ultralytics `8.3.157` 的默认 TFLite 导出在当前版本中固定使用 `per-tensor` 量化。
+- 已新增逐通道 PTQ 导出脚本：
+  - `yolo/pc_pipeline/export_tflite_per_channel.py`
+  - 使用与默认导出相同的 576 张训练图、相同的 `0..255 NHWC float32` 校准输入
+  - 导出完成后自动嵌入 Ultralytics `metadata.json`
+  - 约 `675 MiB` 的临时校准数组在成功导出后自动删除，只保留校准清单
+- 逐通道 Full INT8 模型：
+  - `yolo/pc_runs/common9_yolov8n_320_w0/weights/best_saved_model_per_channel/best_full_integer_quant.tflite`
+  - 输入：`1x320x320x3 int8`，scale=`1/255`，zero point=`-128`
+  - 输出：`1x13x2100 int8`
+  - 文件大小约 `3.13 MiB`
+- 逐通道 Full INT8 独立 test 结果：
+  - Precision：`0.5334`
+  - Recall：`0.3712`
+  - mAP50：`0.3715`
+  - mAP50-95：`0.1768`
+- 该结果没有优于默认逐张量 Full INT8：
+  - 默认逐张量：mAP50=`0.3787`，mAP50-95=`0.1805`
+  - 逐通道：mAP50=`0.3715`，mAP50-95=`0.1768`
+- 还验证了“内部 INT8、float32 输入/输出”的 `best_integer_quant.tflite`：
+  - Precision：`0.5608`
+  - Recall：`0.3602`
+  - mAP50：`0.3818`
+  - mAP50-95：`0.1811`
+- 因此当前精度损失主要来自网络内部激活 PTQ，不是：
+  - TFLite 图转换
+  - INT8 输出接口本身
+  - 权重逐张量/逐通道选择
+- 后续不要继续在逐通道 PTQ 或 float 输出包装上投入时间；若要明显恢复 INT8 精度，应转向：
+  - QAT
+  - 量化友好的检测头/模型结构
+  - 或先提升原始检测器和电阻、电容数据质量后再量化
+
+### PC 定性效果产物
+
+- 已新增固定抽样预测脚本：
+  - `yolo/pc_pipeline/predict_contact_sheet.py`
+- Full INT8 的 12 张固定测试图总览：
+  - `yolo/pc_runs/common9_yolov8n_320_w0_tflite_int8_visual/prediction_contact_sheet.jpg`
+- 当前定性结论：
+  - 近距离、目标清晰、单器件图像表现较好，例如电感可稳定高置信度识别
+  - 中等密度 PCB 可检出主要 IC、连接器、电阻、电容等器件
+  - 高密度 PCB 上仍有漏检、低置信度和电阻/电容混淆
+  - “近距离拍摄使器件像素更大”确实有利，但不能消除 INT8 激活量化损失，也不能补偿训练集标注和类别外观混淆
+- 当前测试集中电阻、电容数量最多，但 Full INT8 的定位精度仍偏低；后续优先针对这两类检查：
+  - 小框标注一致性
+  - 类间定义边界
+  - 近距离实机图像域差异
+  - QAT 后的逐类精度变化

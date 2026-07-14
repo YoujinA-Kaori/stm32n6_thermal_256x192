@@ -1,0 +1,29 @@
+description: Ultralytics best model trained on D:\PracticeProject\Stm32\stm32n6_thermal_256x192\yolo\PCB-dataset-common9\dataset.yaml
+author: Ultralytics
+date: '2026-07-14T19:30:03.260204'
+version: 8.3.157
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+batch: 1
+imgsz:
+- 320
+- 320
+names:
+  0: capacitor
+  1: resistor
+  2: ic
+  3: connector
+  4: diode
+  5: transistor
+  6: led
+  7: inductor
+  8: switch
+args:
+  batch: 1
+  fraction: 1.0
+  half: false
+  int8: true
+  nms: false
+channels: 3

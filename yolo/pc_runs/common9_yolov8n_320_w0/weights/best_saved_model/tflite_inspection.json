@@ -1,0 +1,225 @@
+[
+  {
+    "path": "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\pc_runs\\common9_yolov8n_320_w0\\weights\\best_saved_model\\best_float16.tflite",
+    "size_bytes": 6146053,
+    "sha256": "bb892e549961d2011ab547d4ca8985cae514554484c1c4642d8cadc236e88c16",
+    "inputs": [
+      {
+        "name": "images",
+        "shape": [
+          1,
+          320,
+          320,
+          3
+        ],
+        "dtype": "float32",
+        "quantization": [
+          0.0,
+          0
+        ],
+        "scales": [],
+        "zero_points": [],
+        "quantized_dimension": 0
+      }
+    ],
+    "outputs": [
+      {
+        "name": "Identity",
+        "shape": [
+          1,
+          13,
+          2100
+        ],
+        "dtype": "float32",
+        "quantization": [
+          0.0,
+          0
+        ],
+        "scales": [],
+        "zero_points": [],
+        "quantized_dimension": 0
+      }
+    ],
+    "tensor_count": 769
+  },
+  {
+    "path": "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\pc_runs\\common9_yolov8n_320_w0\\weights\\best_saved_model\\best_float32.tflite",
+    "size_bytes": 12170953,
+    "sha256": "37a7291988f522573bd971ff3aeed66cd1491e759b71a3f340d1de3ad7cbaaee",
+    "inputs": [
+      {
+        "name": "images",
+        "shape": [
+          1,
+          320,
+          320,
+          3
+        ],
+        "dtype": "float32",
+        "quantization": [
+          0.0,
+          0
+        ],
+        "scales": [],
+        "zero_points": [],
+        "quantized_dimension": 0
+      }
+    ],
+    "outputs": [
+      {
+        "name": "Identity",
+        "shape": [
+          1,
+          13,
+          2100
+        ],
+        "dtype": "float32",
+        "quantization": [
+          0.0,
+          0
+        ],
+        "scales": [],
+        "zero_points": [],
+        "quantized_dimension": 0
+      }
+    ],
+    "tensor_count": 637
+  },
+  {
+    "path": "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\pc_runs\\common9_yolov8n_320_w0\\weights\\best_saved_model\\best_full_integer_quant.tflite",
+    "size_bytes": 3149045,
+    "sha256": "28c456608e5860b3a970c2e69cbcf4527d92c25991d23515784a3ebd72249a6a",
+    "inputs": [
+      {
+        "name": "serving_default_images:0",
+        "shape": [
+          1,
+          320,
+          320,
+          3
+        ],
+        "dtype": "int8",
+        "quantization": [
+          0.003921568859368563,
+          -128
+        ],
+        "scales": [
+          0.003921568859368563
+        ],
+        "zero_points": [
+          -128
+        ],
+        "quantized_dimension": 0
+      }
+    ],
+    "outputs": [
+      {
+        "name": "PartitionedCall:0",
+        "shape": [
+          1,
+          13,
+          2100
+        ],
+        "dtype": "int8",
+        "quantization": [
+          0.0077901273034513,
+          -117
+        ],
+        "scales": [
+          0.0077901273034513
+        ],
+        "zero_points": [
+          -117
+        ],
+        "quantized_dimension": 0
+      }
+    ],
+    "tensor_count": 640
+  },
+  {
+    "path": "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\pc_runs\\common9_yolov8n_320_w0\\weights\\best_saved_model\\best_int8.tflite",
+    "size_bytes": 3173445,
+    "sha256": "e3ac8db7d9079b9f2231b1e150bcd7f2db240edf4e276dd0852d7126e642b202",
+    "inputs": [
+      {
+        "name": "images",
+        "shape": [
+          1,
+          320,
+          320,
+          3
+        ],
+        "dtype": "float32",
+        "quantization": [
+          0.0,
+          0
+        ],
+        "scales": [],
+        "zero_points": [],
+        "quantized_dimension": 0
+      }
+    ],
+    "outputs": [
+      {
+        "name": "Identity",
+        "shape": [
+          1,
+          13,
+          2100
+        ],
+        "dtype": "float32",
+        "quantization": [
+          0.0,
+          0
+        ],
+        "scales": [],
+        "zero_points": [],
+        "quantized_dimension": 0
+      }
+    ],
+    "tensor_count": 637
+  },
+  {
+    "path": "D:\\PracticeProject\\Stm32\\stm32n6_thermal_256x192\\yolo\\pc_runs\\common9_yolov8n_320_w0\\weights\\best_saved_model\\best_integer_quant.tflite",
+    "size_bytes": 3149309,
+    "sha256": "7f9479b2fefbd2762b08f8aa59cd525da20d65deaa84e38bbd51914ba4eb85bb",
+    "inputs": [
+      {
+        "name": "serving_default_images:0",
+        "shape": [
+          1,
+          320,
+          320,
+          3
+        ],
+        "dtype": "float32",
+        "quantization": [
+          0.0,
+          0
+        ],
+        "scales": [],
+        "zero_points": [],
+        "quantized_dimension": 0
+      }
+    ],
+    "outputs": [
+      {
+        "name": "PartitionedCall:0",
+        "shape": [
+          1,
+          13,
+          2100
+        ],
+        "dtype": "float32",
+        "quantization": [
+          0.0,
+          0
+        ],
+        "scales": [],
+        "zero_points": [],
+        "quantized_dimension": 0
+      }
+    ],
+    "tensor_count": 642
+  }
+]
